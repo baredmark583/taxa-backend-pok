@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { pool } from './db';
+import { Rank, Suit } from './types';
 
 export const apiRouter = Router();
 
@@ -89,11 +90,27 @@ apiRouter.post('/users/:id/role', async (req, res) => {
 // Get asset configuration
 apiRouter.get('/assets', async (req, res) => {
     try {
-        const result = await pool.query('SELECT "cardBackUrl", "cardFaceUrlPattern", "tableBackgroundUrl" FROM "AssetConfig" WHERE id = 1');
-        if (result.rows.length === 0) {
+        const configRes = await pool.query('SELECT "cardBackUrl", "tableBackgroundUrl" FROM "AssetConfig" WHERE id = 1');
+        if (configRes.rows.length === 0) {
              return res.status(404).json({ error: 'Asset configuration not found.' });
         }
-        res.json(result.rows[0]);
+        
+        const cardsRes = await pool.query('SELECT suit, rank, "imageUrl" FROM "CardAssets"');
+        const cardFaces = cardsRes.rows.reduce((acc, row) => {
+            const { suit, rank, imageUrl } = row;
+            if (!acc[suit]) acc[suit] = {};
+            acc[suit][rank] = imageUrl;
+            return acc;
+        }, {});
+
+        const symbolsRes = await pool.query('SELECT id, name, "imageUrl", payout, weight FROM "SlotSymbols" ORDER BY id');
+
+        res.json({
+            ...configRes.rows[0],
+            cardFaces,
+            slotSymbols: symbolsRes.rows,
+        });
+
     } catch (error) {
         console.error('Error fetching assets:', error);
         res.status(500).json({ error: 'Failed to fetch assets from database' });
@@ -102,44 +119,152 @@ apiRouter.get('/assets', async (req, res) => {
 
 // Update asset configuration
 apiRouter.post('/assets', async (req, res) => {
-    const { cardBackUrl, cardFaceUrlPattern, tableBackgroundUrl } = req.body;
-    
+    const { cardBackUrl, tableBackgroundUrl, cardFaces, slotSymbols } = req.body;
+    const client = await pool.connect();
+
     try {
-        const result = await pool.query(
-            `INSERT INTO "AssetConfig" (id, "cardBackUrl", "cardFaceUrlPattern", "tableBackgroundUrl")
-             VALUES (1, $1, $2, $3)
-             ON CONFLICT (id) DO UPDATE SET
-                "cardBackUrl" = EXCLUDED."cardBackUrl",
-                "cardFaceUrlPattern" = EXCLUDED."cardFaceUrlPattern",
-                "tableBackgroundUrl" = EXCLUDED."tableBackgroundUrl"
-             RETURNING "cardBackUrl", "cardFaceUrlPattern", "tableBackgroundUrl"`,
-            [cardBackUrl, cardFaceUrlPattern, tableBackgroundUrl]
+        await client.query('BEGIN');
+
+        // 1. Update general config
+        await client.query(
+            `UPDATE "AssetConfig" SET "cardBackUrl" = $1, "tableBackgroundUrl" = $2 WHERE id = 1`,
+            [cardBackUrl, tableBackgroundUrl]
         );
-        res.json(result.rows[0]);
+
+        // 2. Update card faces (clear and re-insert)
+        await client.query('TRUNCATE TABLE "CardAssets"');
+        for (const suit of Object.values(Suit)) {
+            for (const rank of Object.values(Rank)) {
+                const imageUrl = cardFaces[suit]?.[rank];
+                if (imageUrl) {
+                     await client.query(
+                        'INSERT INTO "CardAssets" (suit, rank, "imageUrl") VALUES ($1, $2, $3)',
+                        [suit, rank, imageUrl]
+                    );
+                }
+            }
+        }
+
+        // 3. Update slot symbols (clear and re-insert)
+        await client.query('TRUNCATE TABLE "SlotSymbols" RESTART IDENTITY');
+        for (const symbol of slotSymbols) {
+             await client.query(
+                'INSERT INTO "SlotSymbols" (name, "imageUrl", payout, weight) VALUES ($1, $2, $3, $4)',
+                [symbol.name, symbol.imageUrl, symbol.payout, symbol.weight]
+            );
+        }
+
+        await client.query('COMMIT');
+        
+        // Fetch the newly saved data to return to the client
+        const newAssetsRes = await client.query('SELECT * FROM "AssetConfig" WHERE id=1');
+        const newCardsRes = await client.query('SELECT * FROM "CardAssets"');
+        const newSymbolsRes = await client.query('SELECT * FROM "SlotSymbols" ORDER BY id');
+
+        const newCardFaces = newCardsRes.rows.reduce((acc, row) => {
+            if (!acc[row.suit]) acc[row.suit] = {};
+            acc[row.suit][row.rank] = row.imageUrl;
+            return acc;
+        }, {});
+
+        res.json({
+            ...newAssetsRes.rows[0],
+            cardFaces: newCardFaces,
+            slotSymbols: newSymbolsRes.rows,
+        });
+
     } catch (error) {
+        await client.query('ROLLBACK');
         console.error('Error updating assets:', error);
         res.status(500).json({ error: 'Failed to update assets in database' });
+    } finally {
+        client.release();
     }
 });
 
 // Reset assets to default
 apiRouter.post('/assets/reset', async (req, res) => {
-    const defaultAssets = {
-        cardBackUrl: 'https://www.svgrepo.com/show/472548/card-back.svg',
-        cardFaceUrlPattern: 'https://cdn.jsdelivr.net/gh/hayeah/playing-cards-assets@master/svg-cards/{rank}_of_{suit}.svg',
-        tableBackgroundUrl: 'https://wallpapercave.com/wp/wp1852445.jpg',
-    };
-
+    const defaultPattern = 'https://cdn.jsdelivr.net/gh/hayeah/playing-cards-assets@master/svg-cards/{rank}_of_{suit}.svg';
+    const suitNameMap = { HEARTS: 'hearts', DIAMONDS: 'diamonds', CLUBS: 'clubs', SPADES: 'spades' };
+    const rankNameMap = { 'A': 'ace', 'K': 'king', 'Q': 'queen', 'J': 'jack', 'T': '10', '9': '9', '8': '8', '7': '7', '6': '6', '5': '5', '4': '4', '3': '3', '2': '2' };
+    const defaultSlotSymbols = [
+        { name: 'SEVEN', imageUrl: 'https://www.svgrepo.com/show/19161/seven.svg', payout: 100, weight: 1 },
+        { name: 'BAR', imageUrl: 'https://www.svgrepo.com/show/210397/maps-and-flags-casino.svg', payout: 50, weight: 2 },
+        { name: 'BELL', imageUrl: 'https://www.svgrepo.com/show/19163/bell.svg', payout: 20, weight: 3 },
+        { name: 'CHERRY', imageUrl: 'https://www.svgrepo.com/show/198816/slot-machine-casino.svg', payout: 10, weight: 4 },
+    ];
+    
+    const client = await pool.connect();
     try {
-        const result = await pool.query(
-            `UPDATE "AssetConfig" SET "cardBackUrl" = $1, "cardFaceUrlPattern" = $2, "tableBackgroundUrl" = $3 WHERE id = 1
-             RETURNING "cardBackUrl", "cardFaceUrlPattern", "tableBackgroundUrl"`,
-            [defaultAssets.cardBackUrl, defaultAssets.cardFaceUrlPattern, defaultAssets.tableBackgroundUrl]
+        await client.query('BEGIN');
+
+        await client.query(
+            `UPDATE "AssetConfig" SET "cardBackUrl" = $1, "tableBackgroundUrl" = $2 WHERE id = 1`,
+            ['https://www.svgrepo.com/show/472548/card-back.svg', 'https://wallpapercave.com/wp/wp1852445.jpg']
         );
-        res.json(result.rows[0]);
+        
+        await client.query('TRUNCATE TABLE "CardAssets"');
+        for (const suit of Object.values(Suit)) {
+            for (const rank of Object.values(Rank)) {
+                const imageUrl = defaultPattern
+                    .replace('{rank}', rankNameMap[rank as keyof typeof rankNameMap])
+                    .replace('{suit}', suitNameMap[suit as keyof typeof suitNameMap]);
+                await client.query(
+                    'INSERT INTO "CardAssets" (suit, rank, "imageUrl") VALUES ($1, $2, $3)',
+                    [suit, rank, imageUrl]
+                );
+            }
+        }
+        
+        await client.query('TRUNCATE TABLE "SlotSymbols" RESTART IDENTITY');
+        for (const symbol of defaultSlotSymbols) {
+             await client.query(
+                'INSERT INTO "SlotSymbols" (name, "imageUrl", payout, weight) VALUES ($1, $2, $3, $4)',
+                [symbol.name, symbol.imageUrl, symbol.payout, symbol.weight]
+            );
+        }
+
+        await client.query('COMMIT');
+        
+        // Fetch and return the reset data
+        const assetsData = await client.query(`
+            SELECT
+                ac."cardBackUrl",
+                ac."tableBackgroundUrl",
+                json_object_agg(ca.suit, ca.ranks) as "cardFaces",
+                (SELECT json_agg(ss) FROM "SlotSymbols" ss) as "slotSymbols"
+            FROM "AssetConfig" ac,
+            (
+                SELECT suit, json_object_agg(rank, "imageUrl") as ranks
+                FROM "CardAssets"
+                GROUP BY suit
+            ) ca
+            WHERE ac.id = 1
+            GROUP BY ac."cardBackUrl", ac."tableBackgroundUrl";
+        `);
+        
+        // A simpler refetch if the complex query above fails on some pg versions
+        const configRes = await pool.query('SELECT "cardBackUrl", "tableBackgroundUrl" FROM "AssetConfig" WHERE id = 1');
+        const cardsRes = await pool.query('SELECT suit, rank, "imageUrl" FROM "CardAssets"');
+        const cardFaces = cardsRes.rows.reduce((acc, row) => {
+            if (!acc[row.suit]) acc[row.suit] = {};
+            acc[row.suit][row.rank] = row.imageUrl;
+            return acc;
+        }, {});
+        const symbolsRes = await pool.query('SELECT id, name, "imageUrl", payout, weight FROM "SlotSymbols" ORDER BY id');
+
+        res.json({
+            ...configRes.rows[0],
+            cardFaces,
+            slotSymbols: symbolsRes.rows,
+        });
+
     } catch (error) {
+        await client.query('ROLLBACK');
         console.error('Error resetting assets:', error);
         res.status(500).json({ error: 'Failed to reset assets in database' });
+    } finally {
+        client.release();
     }
 });
 

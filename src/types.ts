@@ -123,3 +123,12 @@ export interface TelegramUser {
   last_name?: string;
   username?: string;
 }
+
+// For Slots game
+export interface SlotSymbol {
+  id?: number;
+  name: string;
+  imageUrl: string;
+  payout: number;
+  weight: number;
+}
