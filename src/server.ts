@@ -26,8 +26,8 @@ app.use(cors({
 app.use(express.json());
 
 // REST API routes
-// FIX: Using the router directly without an array wrapper to fix the TypeScript overload issue. This is the standard Express convention.
-app.use('/api', apiRouter);
+// FIX: Wrapping the router in a RequestHandler function to resolve TypeScript overload issues.
+app.use('/api', (req, res, next) => apiRouter(req, res, next));
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
