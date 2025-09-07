@@ -113,6 +113,7 @@ export interface AdminUser {
     name: string;
     playMoney: number;
     realMoney: number;
+    role: 'ADMIN' | 'MODERATOR' | 'PLAYER';
 }
 
 // For Telegram authentication

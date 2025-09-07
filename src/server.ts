@@ -26,8 +26,8 @@ app.use(cors({
 app.use(express.json());
 
 // REST API routes
-// FIX: The direct use of apiRouter is the standard and correct way to mount middleware in Express. This resolves the TypeScript overload error.
-app.use('/api', apiRouter);
+// FIX: Wrapping the router in an array resolves a TypeScript overload issue with app.use().
+app.use('/api', [apiRouter]);
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });

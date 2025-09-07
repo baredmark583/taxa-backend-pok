@@ -6,7 +6,7 @@ export const apiRouter = Router();
 // Get all users
 apiRouter.get('/users', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM "Users"');
+        const result = await pool.query('SELECT * FROM "Users" ORDER BY "name"');
         // Convert money fields from string (if they are) to number
         const users = result.rows.map(user => ({
             ...user,
@@ -49,6 +49,42 @@ apiRouter.post('/users/:id/reward', async (req, res) => {
         res.status(500).json({ error: 'Failed to update user in database' });
     }
 });
+
+// Update a user's role
+apiRouter.post('/users/:id/role', async (req, res) => {
+    const { id } = req.params;
+    const { role } = req.body;
+    const ADMIN_USER_ID = '7327258482';
+
+    if (id === ADMIN_USER_ID) {
+        return res.status(403).json({ error: "Cannot change the admin's role." });
+    }
+
+    if (role !== 'PLAYER' && role !== 'MODERATOR') {
+        return res.status(400).json({ error: 'Invalid role. Can only set to PLAYER or MODERATOR.' });
+    }
+
+    try {
+        const result = await pool.query(
+            'UPDATE "Users" SET "role" = $1 WHERE id = $2 RETURNING *',
+            [role, id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        const user = result.rows[0];
+        res.json({
+            ...user,
+            playMoney: parseFloat(user.playMoney),
+            realMoney: parseFloat(user.realMoney),
+        });
+    } catch (error) {
+        console.error(`Error updating role for user ${id}:`, error);
+        res.status(500).json({ error: 'Failed to update user role in database' });
+    }
+});
+
 
 // Get asset configuration
 apiRouter.get('/assets', async (req, res) => {

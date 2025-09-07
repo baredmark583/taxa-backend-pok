@@ -20,6 +20,17 @@ export const initializeDatabase = async () => {
                 "realMoney" DOUBLE PRECISION NOT NULL DEFAULT 0
             );
         `);
+        
+        // Add role column if it doesn't exist
+        await client.query(`
+            ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS "role" TEXT NOT NULL DEFAULT 'PLAYER';
+        `);
+
+        // Ensure the hardcoded admin user has the ADMIN role
+        const ADMIN_USER_ID = '7327258482';
+        await client.query(`
+            UPDATE "Users" SET "role" = 'ADMIN' WHERE "id" = $1;
+        `, [ADMIN_USER_ID]);
 
         // Create AssetConfig table with a single-row constraint
         await client.query(`
