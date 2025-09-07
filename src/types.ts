@@ -114,3 +114,11 @@ export interface AdminUser {
     playMoney: number;
     realMoney: number;
 }
+
+// For Telegram authentication
+export interface TelegramUser {
+  id: number;
+  first_name: string;
+  last_name?: string;
+  username?: string;
+}

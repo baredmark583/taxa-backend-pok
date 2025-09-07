@@ -1,4 +1,4 @@
-import { GameState, Player, Card, Suit, Rank, GamePhase, PlayerAction, HandResult, AdminUser } from './types';
+import { GameState, Player, Card, Suit, Rank, GamePhase, PlayerAction, HandResult, AdminUser, TelegramUser } from './types';
 import { pool } from './db';
 
 // --- Card & Deck Logic ---
@@ -60,36 +60,43 @@ class PokerGame {
         return JSON.parse(JSON.stringify(this.state));
     }
     
-    public async addPlayer(userId: string) {
-        // Find an empty seat
-        const emptySeatIndex = this.playerSeats.findIndex(p => p === null);
-        if (emptySeatIndex === -1) {
-            console.log('Table is full.');
+    public async addPlayer(telegramUser: TelegramUser) {
+        const userId = telegramUser.id.toString();
+        
+        // Prevent duplicate players
+        if (this.state.players.some(p => p.id === userId)) {
+            console.log(`Player ${userId} is already at the table.`);
+            this.broadcastState(); // Broadcast state to the re-connecting user
             return;
         }
 
+        const emptySeatIndex = this.playerSeats.findIndex(p => p === null);
+        if (emptySeatIndex === -1) {
+            console.log('Table is full.');
+            return; // Or send a "table full" message
+        }
+
         try {
-            // Find or create user in the database
-            const name = `Player #${Math.floor(Math.random()*1000)}`;
+            const name = `${telegramUser.first_name} ${telegramUser.last_name || ''}`.trim();
             const res = await pool.query(
                 `INSERT INTO "Users" (id, name, "playMoney", "realMoney")
                  VALUES ($1, $2, 10000, 0)
                  ON CONFLICT (id) DO UPDATE
-                 SET id = EXCLUDED.id -- This is a trick to get the existing row back
+                 SET name = EXCLUDED.name
                  RETURNING *`,
                 [userId, name]
             );
 
-            const user: AdminUser = {
+            const dbUser: AdminUser = {
                 ...res.rows[0],
                  playMoney: parseFloat(res.rows[0].playMoney),
                  realMoney: parseFloat(res.rows[0].realMoney),
             };
 
             const newPlayer: Player = {
-                id: user.id,
-                name: user.name,
-                stack: user.playMoney,
+                id: dbUser.id,
+                name: dbUser.name,
+                stack: dbUser.playMoney, // Use play money for now
                 cards: [], bet: 0, isFolded: false, isAllIn: false,
                 isDealer: false, isSmallBlind: false, isBigBlind: false,
                 isThinking: false, position: emptySeatIndex,
@@ -98,11 +105,13 @@ class PokerGame {
             this.playerSeats[emptySeatIndex] = newPlayer;
             this.state.players = this.playerSeats.filter(p => p !== null) as Player[];
 
-            // Start game if enough players
             if (this.state.players.length >= 2 && this.state.gamePhase === GamePhase.PRE_DEAL) {
-                setTimeout(() => this.startNewHand(), 1000);
+                this.state.log = ["Game is starting..."];
+                this.broadcastState();
+                setTimeout(() => this.startNewHand(), 2000);
+            } else {
+                 this.broadcastState();
             }
-            this.broadcastState();
         } catch (error) {
             console.error('Failed to add player to game:', error);
         }

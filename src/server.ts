@@ -1,3 +1,6 @@
+import dotenv from 'dotenv';
+dotenv.config(); // Load environment variables from .env file
+
 import express from 'express';
 import http from 'http';
 import { WebSocketServer } from 'ws';
@@ -23,8 +26,8 @@ app.use(cors({
 app.use(express.json());
 
 // REST API routes
-// FIX: The direct use of apiRouter was causing a type error. Wrapping it in a middleware function resolves the issue.
-app.use('/api', (req, res, next) => apiRouter(req, res, next));
+// FIX: The direct use of apiRouter is the standard and correct way to mount middleware in Express. This resolves the TypeScript overload error.
+app.use('/api', apiRouter);
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
