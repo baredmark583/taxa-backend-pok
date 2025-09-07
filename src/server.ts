@@ -23,8 +23,8 @@ app.use(cors({
 app.use(express.json());
 
 // REST API routes
-// FIX: Replaced middleware wrapper with direct use of apiRouter, which is the idiomatic Express approach and resolves the type error.
-app.use('/api', apiRouter);
+// FIX: The direct use of apiRouter was causing a type error. Wrapping it in a middleware function resolves the issue.
+app.use('/api', (req, res, next) => apiRouter(req, res, next));
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
