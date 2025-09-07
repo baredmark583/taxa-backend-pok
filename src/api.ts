@@ -1,15 +1,22 @@
 import { Router } from 'express';
-import { prisma } from './db';
+import { pool } from './db';
 
 export const apiRouter = Router();
 
 // Get all users
 apiRouter.get('/users', async (req, res) => {
     try {
-        const users = await prisma.user.findMany();
+        const result = await pool.query('SELECT * FROM "Users"');
+        // Convert money fields from string (if they are) to number
+        const users = result.rows.map(user => ({
+            ...user,
+            playMoney: parseFloat(user.playMoney),
+            realMoney: parseFloat(user.realMoney),
+        }));
         res.json(users);
     } catch (error) {
-        res.status(500).json({ error: 'Failed to fetch users' });
+        console.error('Error fetching users:', error);
+        res.status(500).json({ error: 'Failed to fetch users from database' });
     }
 });
 
@@ -23,58 +30,79 @@ apiRouter.post('/users/:id/reward', async (req, res) => {
     }
 
     try {
-        const updatedUser = await prisma.user.update({
-            where: { id },
-            data: {
-                playMoney: {
-                    increment: amount,
-                },
-            },
+        const result = await pool.query(
+            'UPDATE "Users" SET "playMoney" = "playMoney" + $1 WHERE id = $2 RETURNING *',
+            [amount, id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        const user = result.rows[0];
+        res.json({
+            ...user,
+            playMoney: parseFloat(user.playMoney),
+            realMoney: parseFloat(user.realMoney),
         });
-        res.json(updatedUser);
     } catch (error) {
-        res.status(500).json({ error: 'Failed to grant reward' });
+        console.error(`Error rewarding user ${id}:`, error);
+        res.status(500).json({ error: 'Failed to update user in database' });
     }
 });
 
 // Get asset configuration
 apiRouter.get('/assets', async (req, res) => {
     try {
-        const assets = await prisma.assetConfig.findFirst({ where: { id: 1 } });
-        res.json(assets);
+        const result = await pool.query('SELECT "cardBackUrl", "cardFaceUrlPattern", "tableBackgroundUrl" FROM "AssetConfig" WHERE id = 1');
+        if (result.rows.length === 0) {
+             return res.status(404).json({ error: 'Asset configuration not found.' });
+        }
+        res.json(result.rows[0]);
     } catch (error) {
-        res.status(500).json({ error: 'Failed to fetch assets' });
+        console.error('Error fetching assets:', error);
+        res.status(500).json({ error: 'Failed to fetch assets from database' });
     }
 });
 
 // Update asset configuration
 apiRouter.post('/assets', async (req, res) => {
     const { cardBackUrl, cardFaceUrlPattern, tableBackgroundUrl } = req.body;
+    
     try {
-        const updatedAssets = await prisma.assetConfig.update({
-            where: { id: 1 },
-            data: { cardBackUrl, cardFaceUrlPattern, tableBackgroundUrl },
-        });
-        res.json(updatedAssets);
+        const result = await pool.query(
+            `INSERT INTO "AssetConfig" (id, "cardBackUrl", "cardFaceUrlPattern", "tableBackgroundUrl")
+             VALUES (1, $1, $2, $3)
+             ON CONFLICT (id) DO UPDATE SET
+                "cardBackUrl" = EXCLUDED."cardBackUrl",
+                "cardFaceUrlPattern" = EXCLUDED."cardFaceUrlPattern",
+                "tableBackgroundUrl" = EXCLUDED."tableBackgroundUrl"
+             RETURNING "cardBackUrl", "cardFaceUrlPattern", "tableBackgroundUrl"`,
+            [cardBackUrl, cardFaceUrlPattern, tableBackgroundUrl]
+        );
+        res.json(result.rows[0]);
     } catch (error) {
-        res.status(500).json({ error: 'Failed to update assets' });
+        console.error('Error updating assets:', error);
+        res.status(500).json({ error: 'Failed to update assets in database' });
     }
 });
 
 // Reset assets to default
 apiRouter.post('/assets/reset', async (req, res) => {
-     try {
-        const defaultAssets = {
-            cardBackUrl: 'https://www.svgrepo.com/show/472548/card-back.svg',
-            cardFaceUrlPattern: 'https://cdn.jsdelivr.net/gh/hayeah/playing-cards-assets@master/svg-cards/{rank}_of_{suit}.svg',
-            tableBackgroundUrl: 'https://wallpapercave.com/wp/wp1852445.jpg',
-        };
-        const updatedAssets = await prisma.assetConfig.update({
-            where: { id: 1 },
-            data: defaultAssets,
-        });
-        res.json(updatedAssets);
+    const defaultAssets = {
+        cardBackUrl: 'https://www.svgrepo.com/show/472548/card-back.svg',
+        cardFaceUrlPattern: 'https://cdn.jsdelivr.net/gh/hayeah/playing-cards-assets@master/svg-cards/{rank}_of_{suit}.svg',
+        tableBackgroundUrl: 'https://wallpapercave.com/wp/wp1852445.jpg',
+    };
+
+    try {
+        const result = await pool.query(
+            `UPDATE "AssetConfig" SET "cardBackUrl" = $1, "cardFaceUrlPattern" = $2, "tableBackgroundUrl" = $3 WHERE id = 1
+             RETURNING "cardBackUrl", "cardFaceUrlPattern", "tableBackgroundUrl"`,
+            [defaultAssets.cardBackUrl, defaultAssets.cardFaceUrlPattern, defaultAssets.tableBackgroundUrl]
+        );
+        res.json(result.rows[0]);
     } catch (error) {
-        res.status(500).json({ error: 'Failed to reset assets' });
+        console.error('Error resetting assets:', error);
+        res.status(500).json({ error: 'Failed to reset assets in database' });
     }
 });

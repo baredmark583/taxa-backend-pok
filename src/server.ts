@@ -4,7 +4,14 @@ import { WebSocketServer } from 'ws';
 import cors from 'cors';
 import { setupWebSocket } from './wsHandler';
 import { apiRouter } from './api';
-import { prisma } from './db';
+import { initializeDatabase } from './db';
+
+// Initialize the database schema on startup
+initializeDatabase().catch(err => {
+    console.error("Failed to initialize database:", err);
+    // FIX: Cast process to any to avoid TypeScript error on exit.
+    (process as any).exit(1);
+});
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -16,6 +23,7 @@ app.use(cors({
 app.use(express.json());
 
 // REST API routes
+// FIX: Replaced middleware wrapper with direct use of apiRouter, which is the idiomatic Express approach and resolves the type error.
 app.use('/api', apiRouter);
 
 const server = http.createServer(app);
@@ -23,29 +31,6 @@ const wss = new WebSocketServer({ server });
 
 setupWebSocket(wss);
 
-async function main() {
-    // Seed default asset config if it doesn't exist
-    const assetConfig = await prisma.assetConfig.findUnique({ where: { id: 1 } });
-    if (!assetConfig) {
-        await prisma.assetConfig.create({
-            data: {
-                id: 1,
-                cardBackUrl: 'https://www.svgrepo.com/show/472548/card-back.svg',
-                cardFaceUrlPattern: 'https://cdn.jsdelivr.net/gh/hayeah/playing-cards-assets@master/svg-cards/{rank}_of_{suit}.svg',
-                tableBackgroundUrl: 'https://wallpapercave.com/wp/wp1852445.jpg',
-            }
-        });
-        console.log('Default asset configuration seeded.');
-    }
-
-    server.listen(port, () => {
-        console.log(`Server is running on http://localhost:${port}`);
-    });
-}
-
-main().catch(e => {
-    console.error(e);
-    // FIX: Cast process to any to bypass incorrect type definition for `process.exit`.
-    // This is necessary when the Node.js types are not correctly configured.
-    (process as any).exit(1);
+server.listen(port, () => {
+    console.log(`Server is running on http://localhost:${port}`);
 });

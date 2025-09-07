@@ -1,5 +1,5 @@
-import { GameState, Player, Card, Suit, Rank, GamePhase, PlayerAction, HandResult } from '../../types';
-import { prisma } from './db';
+import { GameState, Player, Card, Suit, Rank, GamePhase, PlayerAction, HandResult, AdminUser } from './types';
+import { pool } from './db';
 
 // --- Card & Deck Logic ---
 const SUITS: Suit[] = [Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS, Suit.SPADES];
@@ -68,35 +68,44 @@ class PokerGame {
             return;
         }
 
-        let user = await prisma.user.findFirst({ where: { id: userId } });
-        if (!user) {
-            user = await prisma.user.create({
-                data: {
-                    id: userId,
-                    name: `Player #${Math.floor(Math.random()*1000)}`,
-                    playMoney: 10000,
-                    realMoney: 0
-                }
-            });
+        try {
+            // Find or create user in the database
+            const name = `Player #${Math.floor(Math.random()*1000)}`;
+            const res = await pool.query(
+                `INSERT INTO "Users" (id, name, "playMoney", "realMoney")
+                 VALUES ($1, $2, 10000, 0)
+                 ON CONFLICT (id) DO UPDATE
+                 SET id = EXCLUDED.id -- This is a trick to get the existing row back
+                 RETURNING *`,
+                [userId, name]
+            );
+
+            const user: AdminUser = {
+                ...res.rows[0],
+                 playMoney: parseFloat(res.rows[0].playMoney),
+                 realMoney: parseFloat(res.rows[0].realMoney),
+            };
+
+            const newPlayer: Player = {
+                id: user.id,
+                name: user.name,
+                stack: user.playMoney,
+                cards: [], bet: 0, isFolded: false, isAllIn: false,
+                isDealer: false, isSmallBlind: false, isBigBlind: false,
+                isThinking: false, position: emptySeatIndex,
+            };
+
+            this.playerSeats[emptySeatIndex] = newPlayer;
+            this.state.players = this.playerSeats.filter(p => p !== null) as Player[];
+
+            // Start game if enough players
+            if (this.state.players.length >= 2 && this.state.gamePhase === GamePhase.PRE_DEAL) {
+                setTimeout(() => this.startNewHand(), 1000);
+            }
+            this.broadcastState();
+        } catch (error) {
+            console.error('Failed to add player to game:', error);
         }
-
-        const newPlayer: Player = {
-            id: user.id,
-            name: user.name,
-            stack: user.playMoney,
-            cards: [], bet: 0, isFolded: false, isAllIn: false,
-            isDealer: false, isSmallBlind: false, isBigBlind: false,
-            isThinking: false, position: emptySeatIndex,
-        };
-
-        this.playerSeats[emptySeatIndex] = newPlayer;
-        this.state.players = this.playerSeats.filter(p => p !== null) as Player[];
-
-        // Start game if enough players
-        if (this.state.players.length >= 2 && this.state.gamePhase === GamePhase.PRE_DEAL) {
-            setTimeout(() => this.startNewHand(), 1000);
-        }
-        this.broadcastState();
     }
 
     private startNewHand() {
@@ -178,8 +187,13 @@ class PokerGame {
     }
     
     private findNextPlayer() {
-        const nextIndex = (this.state.activePlayerIndex + 1) % this.state.players.length;
+        let nextIndex = (this.state.activePlayerIndex + 1) % this.state.players.length;
         
+        // Skip folded or all-in players
+        while(this.state.players[nextIndex].isFolded || this.state.players[nextIndex].isAllIn) {
+            nextIndex = (nextIndex + 1) % this.state.players.length;
+        }
+
         // Simplified end-of-round logic
         if (nextIndex === this.state.lastRaiserIndex) {
             this.state.activePlayerIndex = -1; // End of betting round
@@ -189,7 +203,7 @@ class PokerGame {
         }
     }
 
-    private progressToNextPhase() {
+    private async progressToNextPhase() {
         // Logic to deal flop, turn, river, or showdown
         if (this.state.gamePhase === GamePhase.PRE_FLOP) {
             this.state.gamePhase = GamePhase.FLOP;
@@ -204,6 +218,17 @@ class PokerGame {
             this.state.log = [`${winner.name} wins ${this.state.pot}!`];
             this.state.pot = 0;
             this.broadcastState();
+            
+            // Save winner's new balance to the database
+            try {
+                await pool.query(
+                    'UPDATE "Users" SET "playMoney" = $1 WHERE id = $2',
+                    [winner.stack, winner.id]
+                );
+            } catch (error) {
+                console.error(`Failed to update balance for winner ${winner.id}:`, error);
+            }
+
             setTimeout(() => this.startNewHand(), 5000);
             return;
         }
