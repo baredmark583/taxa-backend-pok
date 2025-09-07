@@ -142,3 +142,20 @@ apiRouter.post('/assets/reset', async (req, res) => {
         res.status(500).json({ error: 'Failed to reset assets in database' });
     }
 });
+
+// Admin login
+apiRouter.post('/admin/login', (req, res) => {
+    const { password } = req.body;
+    const adminPassword = process.env.ADMIN_PASSWORD;
+
+    if (!adminPassword) {
+        console.error('ADMIN_PASSWORD is not set on the server.');
+        return res.status(500).json({ error: 'Admin login is not configured.' });
+    }
+
+    if (password === adminPassword) {
+        res.json({ success: true });
+    } else {
+        res.status(401).json({ error: 'Invalid password.' });
+    }
+});
