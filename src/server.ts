@@ -25,9 +25,8 @@ app.use(cors({
 }));
 
 // REST API routes
-// FIX: To resolve a TypeScript overload error, the apiRouter is mounted under the /api prefix,
-// and the JSON body parser is included as middleware for this path.
-// The route paths within apiRouter are now relative to /api.
+// FIX: The combined app.use() call with the JSON body parser and the apiRouter resolves a TypeScript overload error.
+// The apiRouter is mounted under the /api prefix, and its route paths are relative to /api.
 app.use('/api', express.json(), apiRouter);
 
 const server = http.createServer(app);
