@@ -26,7 +26,7 @@ app.use(cors({
 app.use(express.json());
 
 // REST API routes
-// FIX: Use the router directly, which is the standard way and resolves TS overload issues.
+// FIX: Pass apiRouter directly to app.use. The previous wrapping function caused a TypeScript overload resolution issue.
 app.use('/api', apiRouter);
 
 const server = http.createServer(app);

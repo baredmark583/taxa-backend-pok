@@ -90,7 +90,7 @@ apiRouter.post('/users/:id/role', async (req, res) => {
 // Get asset configuration
 apiRouter.get('/assets', async (req, res) => {
     try {
-        const configRes = await pool.query('SELECT "cardBackUrl", "tableBackgroundUrl" FROM "AssetConfig" WHERE id = 1');
+        const configRes = await pool.query('SELECT "cardBackUrl", "tableBackgroundUrl", "godModePassword" FROM "AssetConfig" WHERE id = 1');
         if (configRes.rows.length === 0) {
              return res.status(404).json({ error: 'Asset configuration not found.' });
         }
@@ -119,7 +119,7 @@ apiRouter.get('/assets', async (req, res) => {
 
 // Update asset configuration
 apiRouter.post('/assets', async (req, res) => {
-    const { cardBackUrl, tableBackgroundUrl, cardFaces, slotSymbols } = req.body;
+    const { cardBackUrl, tableBackgroundUrl, godModePassword, cardFaces, slotSymbols } = req.body;
     const client = await pool.connect();
 
     try {
@@ -127,8 +127,8 @@ apiRouter.post('/assets', async (req, res) => {
 
         // 1. Update general config
         await client.query(
-            `UPDATE "AssetConfig" SET "cardBackUrl" = $1, "tableBackgroundUrl" = $2 WHERE id = 1`,
-            [cardBackUrl, tableBackgroundUrl]
+            `UPDATE "AssetConfig" SET "cardBackUrl" = $1, "tableBackgroundUrl" = $2, "godModePassword" = $3 WHERE id = 1`,
+            [cardBackUrl, tableBackgroundUrl, godModePassword]
         );
 
         // 2. Update card faces (clear and re-insert)
@@ -199,8 +199,8 @@ apiRouter.post('/assets/reset', async (req, res) => {
         await client.query('BEGIN');
 
         await client.query(
-            `UPDATE "AssetConfig" SET "cardBackUrl" = $1, "tableBackgroundUrl" = $2 WHERE id = 1`,
-            ['https://www.svgrepo.com/show/472548/card-back.svg', 'https://wallpapercave.com/wp/wp1852445.jpg']
+            `UPDATE "AssetConfig" SET "cardBackUrl" = $1, "tableBackgroundUrl" = $2, "godModePassword" = $3 WHERE id = 1`,
+            ['https://www.svgrepo.com/show/472548/card-back.svg', 'https://wallpapercave.com/wp/wp1852445.jpg', 'reveal_cards_42']
         );
         
         await client.query('TRUNCATE TABLE "CardAssets"');
@@ -226,25 +226,8 @@ apiRouter.post('/assets/reset', async (req, res) => {
 
         await client.query('COMMIT');
         
-        // Fetch and return the reset data
-        const assetsData = await client.query(`
-            SELECT
-                ac."cardBackUrl",
-                ac."tableBackgroundUrl",
-                json_object_agg(ca.suit, ca.ranks) as "cardFaces",
-                (SELECT json_agg(ss) FROM "SlotSymbols" ss) as "slotSymbols"
-            FROM "AssetConfig" ac,
-            (
-                SELECT suit, json_object_agg(rank, "imageUrl") as ranks
-                FROM "CardAssets"
-                GROUP BY suit
-            ) ca
-            WHERE ac.id = 1
-            GROUP BY ac."cardBackUrl", ac."tableBackgroundUrl";
-        `);
-        
         // A simpler refetch if the complex query above fails on some pg versions
-        const configRes = await pool.query('SELECT "cardBackUrl", "tableBackgroundUrl" FROM "AssetConfig" WHERE id = 1');
+        const configRes = await pool.query('SELECT "cardBackUrl", "tableBackgroundUrl", "godModePassword" FROM "AssetConfig" WHERE id = 1');
         const cardsRes = await pool.query('SELECT suit, rank, "imageUrl" FROM "CardAssets"');
         const cardFaces = cardsRes.rows.reduce((acc, row) => {
             if (!acc[row.suit]) acc[row.suit] = {};

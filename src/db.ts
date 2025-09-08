@@ -11,6 +11,7 @@ export const pool = new Pool({
 const defaultAssets = {
     cardBackUrl: 'https://www.svgrepo.com/show/472548/card-back.svg',
     tableBackgroundUrl: 'https://wallpapercave.com/wp/wp1852445.jpg',
+    godModePassword: 'reveal_cards_42',
 };
 
 const defaultSlotSymbols = [
@@ -70,6 +71,7 @@ export const initializeDatabase = async () => {
                 "id" INTEGER PRIMARY KEY DEFAULT 1,
                 "cardBackUrl" TEXT NOT NULL,
                 "tableBackgroundUrl" TEXT NOT NULL,
+                "godModePassword" TEXT NOT NULL,
                 CONSTRAINT single_row_check CHECK (id = 1)
             );
         `);
@@ -78,10 +80,13 @@ export const initializeDatabase = async () => {
         
         // Seed AssetConfig with default values
         await client.query(`
-            INSERT INTO "AssetConfig" (id, "cardBackUrl", "tableBackgroundUrl")
-            VALUES (1, $1, $2)
-            ON CONFLICT (id) DO NOTHING;
-        `, [defaultAssets.cardBackUrl, defaultAssets.tableBackgroundUrl]);
+            INSERT INTO "AssetConfig" (id, "cardBackUrl", "tableBackgroundUrl", "godModePassword")
+            VALUES (1, $1, $2, $3)
+            ON CONFLICT (id) DO UPDATE SET
+                "cardBackUrl" = COALESCE("AssetConfig"."cardBackUrl", $1),
+                "tableBackgroundUrl" = COALESCE("AssetConfig"."tableBackgroundUrl", $2),
+                "godModePassword" = COALESCE("AssetConfig"."godModePassword", $3);
+        `, [defaultAssets.cardBackUrl, defaultAssets.tableBackgroundUrl, defaultAssets.godModePassword]);
         
         // 3. CardAssets Table
         await client.query(`
