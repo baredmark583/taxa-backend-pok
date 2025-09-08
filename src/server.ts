@@ -24,10 +24,10 @@ app.use(cors({
     origin: process.env.FRONTEND_URL || 'http://localhost:5173'
 }));
 
-// Middleware to parse JSON bodies. This should come before the routes.
-// FIX: Resolved a TypeScript overload error by applying the express.json() middleware and the apiRouter in separate calls.
-// This is a more robust pattern and ensures the JSON body parser is available for all API routes.
+// Middleware to parse JSON bodies. This must be applied before any routes that need it.
 app.use(express.json());
+
+// FIX: To avoid a TypeScript overload error, the express.json() middleware and the apiRouter must be applied in separate app.use() calls, especially when using a path prefix.
 app.use('/api', apiRouter);
 
 const server = http.createServer(app);
