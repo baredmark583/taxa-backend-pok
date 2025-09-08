@@ -26,7 +26,7 @@ app.use(cors({
 app.use(express.json());
 
 // REST API routes
-// FIX: The router middleware should be passed directly to app.use, not within an array, to resolve the overload error.
+// FIX: The router middleware must be passed directly to app.use, not within an array, to resolve the TypeScript overload error.
 app.use('/api', apiRouter);
 
 const server = http.createServer(app);
