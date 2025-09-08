@@ -23,12 +23,12 @@ const port = process.env.PORT || 3000;
 app.use(cors({
     origin: process.env.FRONTEND_URL || 'http://localhost:5173'
 }));
-app.use(express.json());
 
 // REST API routes
-// FIX: To resolve a TypeScript overload error, the apiRouter is mounted under the /api prefix.
+// FIX: To resolve a TypeScript overload error, the apiRouter is mounted under the /api prefix,
+// and the JSON body parser is included as middleware for this path.
 // The route paths within apiRouter are now relative to /api.
-app.use('/api', apiRouter);
+app.use('/api', express.json(), apiRouter);
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
