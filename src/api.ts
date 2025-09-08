@@ -1,8 +1,9 @@
-import { Router } from 'express';
+import express from 'express';
 import { pool } from './db';
 import { Rank, Suit } from './types';
 
-export const apiRouter = Router();
+// FIX: Use express.Router() from the default express import to resolve a type inference error in server.ts.
+export const apiRouter = express.Router();
 
 // Get all users
 // FIX: Removed /api prefix. It is now handled in server.ts
