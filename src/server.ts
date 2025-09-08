@@ -25,7 +25,7 @@ app.use(cors({
 }));
 
 // Middleware to parse JSON bodies for API routes.
-// FIX: Resolved a TypeScript overload error by splitting the middleware registration into two separate calls.
+// FIX: Split middleware registration into two separate calls to resolve a TypeScript overload error.
 app.use('/api', express.json());
 app.use('/api', apiRouter);
 
