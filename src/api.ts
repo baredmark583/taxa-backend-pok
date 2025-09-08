@@ -5,6 +5,7 @@ import { Rank, Suit } from './types';
 export const apiRouter = Router();
 
 // Get all users
+// FIX: Removed /api prefix. It is now handled in server.ts
 apiRouter.get('/users', async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM "Users" ORDER BY "name"');
@@ -22,6 +23,7 @@ apiRouter.get('/users', async (req, res) => {
 });
 
 // Grant a reward to a user
+// FIX: Removed /api prefix. It is now handled in server.ts
 apiRouter.post('/users/:id/reward', async (req, res) => {
     const { id } = req.params;
     const { amount } = req.body;
@@ -52,6 +54,7 @@ apiRouter.post('/users/:id/reward', async (req, res) => {
 });
 
 // Update a user's role
+// FIX: Removed /api prefix. It is now handled in server.ts
 apiRouter.post('/users/:id/role', async (req, res) => {
     const { id } = req.params;
     const { role } = req.body;
@@ -88,6 +91,7 @@ apiRouter.post('/users/:id/role', async (req, res) => {
 
 
 // Get asset configuration
+// FIX: Removed /api prefix. It is now handled in server.ts
 apiRouter.get('/assets', async (req, res) => {
     try {
         const configRes = await pool.query('SELECT "cardBackUrl", "tableBackgroundUrl", "godModePassword" FROM "AssetConfig" WHERE id = 1');
@@ -118,6 +122,7 @@ apiRouter.get('/assets', async (req, res) => {
 });
 
 // Update asset configuration
+// FIX: Removed /api prefix. It is now handled in server.ts
 apiRouter.post('/assets', async (req, res) => {
     const { cardBackUrl, tableBackgroundUrl, godModePassword, cardFaces, slotSymbols } = req.body;
     const client = await pool.connect();
@@ -183,6 +188,7 @@ apiRouter.post('/assets', async (req, res) => {
 });
 
 // Reset assets to default
+// FIX: Removed /api prefix. It is now handled in server.ts
 apiRouter.post('/assets/reset', async (req, res) => {
     const defaultPattern = 'https://cdn.jsdelivr.net/gh/hayeah/playing-cards-assets@master/svg-cards/{rank}_of_{suit}.svg';
     const suitNameMap = { HEARTS: 'hearts', DIAMONDS: 'diamonds', CLUBS: 'clubs', SPADES: 'spades' };
@@ -252,6 +258,7 @@ apiRouter.post('/assets/reset', async (req, res) => {
 });
 
 // Admin login
+// FIX: Removed /api prefix. It is now handled in server.ts
 apiRouter.post('/admin/login', (req, res) => {
     const { password } = req.body;
     const adminPassword = process.env.ADMIN_PASSWORD;
