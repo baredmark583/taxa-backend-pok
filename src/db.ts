@@ -66,19 +66,24 @@ export const initializeDatabase = async () => {
         await client.query(`UPDATE "Users" SET "role" = 'ADMIN' WHERE "id" = $1;`, [ADMIN_USER_ID]);
 
         // 2. General AssetConfig Table
+        // Step 1: Create the table with only the primary key if it doesn't exist.
         await client.query(`
             CREATE TABLE IF NOT EXISTS "AssetConfig" (
                 "id" INTEGER PRIMARY KEY DEFAULT 1,
-                "cardBackUrl" TEXT NOT NULL,
-                "tableBackgroundUrl" TEXT NOT NULL,
-                "godModePassword" TEXT NOT NULL,
                 CONSTRAINT single_row_check CHECK (id = 1)
             );
         `);
-        // Remove old column if it exists from a previous version
+        
+        // Step 2: Add columns individually if they don't exist. This acts as a migration.
+        await client.query(`ALTER TABLE "AssetConfig" ADD COLUMN IF NOT EXISTS "cardBackUrl" TEXT;`);
+        await client.query(`ALTER TABLE "AssetConfig" ADD COLUMN IF NOT EXISTS "tableBackgroundUrl" TEXT;`);
+        await client.query(`ALTER TABLE "AssetConfig" ADD COLUMN IF NOT EXISTS "godModePassword" TEXT;`);
+
+        // Step 3: Remove any old columns from previous versions.
         await client.query(`ALTER TABLE "AssetConfig" DROP COLUMN IF EXISTS "cardFaceUrlPattern";`);
         
-        // Seed AssetConfig with default values
+        // Step 4: Seed AssetConfig with default values. This is safe because the columns are guaranteed to exist now.
+        // COALESCE ensures we don't overwrite existing settings with defaults on subsequent runs.
         await client.query(`
             INSERT INTO "AssetConfig" (id, "cardBackUrl", "tableBackgroundUrl", "godModePassword")
             VALUES (1, $1, $2, $3)
