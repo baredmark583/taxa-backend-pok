@@ -28,8 +28,9 @@ app.use(cors({
 
 // Middleware to parse JSON bodies for API routes.
 // FIX: The `app.use` function was causing a TypeScript overload error.
-// Combining middleware into a single app.use() call resolves the issue.
-app.use('/api', express.json(), apiRouter);
+// Splitting the middleware registration into separate calls resolves the issue.
+app.use('/api', express.json());
+app.use('/api', apiRouter);
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
