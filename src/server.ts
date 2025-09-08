@@ -1,4 +1,5 @@
 
+
 import dotenv from 'dotenv';
 dotenv.config(); // Load environment variables from .env file
 
@@ -27,9 +28,8 @@ app.use(cors({
 
 // Middleware to parse JSON bodies for API routes.
 // FIX: The `app.use` function was causing a TypeScript overload error.
-// Splitting it into two separate calls for `express.json()` and `apiRouter` resolves the issue.
-app.use('/api', express.json());
-app.use('/api', apiRouter);
+// Combining middleware into a single app.use() call resolves the issue.
+app.use('/api', express.json(), apiRouter);
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
