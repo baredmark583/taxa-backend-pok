@@ -412,7 +412,6 @@ class PokerGame {
              winner.stack += this.state.pot;
              this.state.log = [`${winner.name} wins ${this.state.pot}!`];
              this.state.pot = 0;
-             this.broadcastState();
              await this.updatePlayerBalanceInDB(winner);
         } else {
             let bestHand: HandResult | null = null;
@@ -429,13 +428,17 @@ class PokerGame {
                 }
             });
 
+            // This guard clause ensures that if we proceed, `winners` has items and `bestHand` is not null.
+            // This satisfies the TypeScript compiler, preventing the 'never' type error, and also prevents division by zero.
             if (winners.length > 0 && bestHand) {
                 const totalWinnings = this.state.pot;
                 const potPerWinner = Math.floor(totalWinnings / winners.length);
-                winners.forEach(winner => {
+                
+                // Use a for...of loop to correctly handle async DB updates.
+                for (const winner of winners) {
                     winner.stack += potPerWinner;
-                    this.updatePlayerBalanceInDB(winner);
-                });
+                    await this.updatePlayerBalanceInDB(winner);
+                }
                 
                 const winnerNames = winners.map(w => w.name).join(', ');
                 this.state.log = [`${winnerNames} wins ${totalWinnings} with a ${bestHand.name}!`];

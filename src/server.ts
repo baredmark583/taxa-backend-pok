@@ -33,9 +33,8 @@ app.use(cors());
 app.use(express.json());
 
 // Mount the API router.
-// FIX: Using an explicit middleware function wrapper for the apiRouter
-// to resolve a complex type inference issue with app.use().
-app.use('/api', (req, res, next) => apiRouter(req, res, next));
+// FIX: Using the router directly is the standard practice in Express and resolves the type overload issue.
+app.use('/api', apiRouter);
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
