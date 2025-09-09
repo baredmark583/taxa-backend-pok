@@ -66,6 +66,9 @@ export const setupWebSocket = (wss: WebSocketServer) => {
                         return;
                     }
 
+                    // Attach userId to WebSocket instance for tracking
+                    (ws as any).userId = user.id.toString();
+
                     if (!gameRooms.has(roomId)) {
                         gameRooms.set(roomId, new Set());
                     }
@@ -92,6 +95,10 @@ export const setupWebSocket = (wss: WebSocketServer) => {
 
         ws.on('close', () => {
             console.log('Client disconnected');
+            const userId = (ws as any).userId;
+            if (userId && gameInstance) {
+                gameInstance.removePlayer(userId);
+            }
             // Remove ws from all rooms
             gameRooms.forEach(clients => clients.delete(ws));
         });

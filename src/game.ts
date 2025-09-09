@@ -117,6 +117,39 @@ class PokerGame {
         }
     }
 
+    public removePlayer(playerId: string) {
+        const playerIndex = this.state.players.findIndex(p => p.id === playerId);
+        if (playerIndex === -1) {
+            console.log(`Player ${playerId} not found for removal.`);
+            return;
+        }
+
+        const removedPlayer = this.state.players[playerIndex];
+        const seatIndex = this.playerSeats.findIndex(p => p?.id === playerId);
+        if (seatIndex > -1) {
+            this.playerSeats[seatIndex] = null;
+        }
+
+        this.state.players = this.state.players.filter(p => p.id !== playerId);
+        this.state.log.push(`${removedPlayer.name} has left the table.`);
+        console.log(`${removedPlayer.name} has left the table.`);
+
+        // Simple reset logic: if fewer than 2 players, stop the game.
+        if (this.state.players.length < 2 && this.state.gamePhase !== GamePhase.PRE_DEAL) {
+            this.state.gamePhase = GamePhase.PRE_DEAL;
+            this.state.activePlayerIndex = -1;
+            this.state.log.push("Waiting for more players...");
+        } else if (this.state.players.length >= 2) {
+             // If the active player was removed, find the next one.
+             if (this.state.activePlayerIndex === playerIndex) {
+                 this.findNextPlayer();
+             }
+        }
+        
+        this.broadcastState();
+    }
+
+
     private startNewHand() {
         if (this.state.players.length < 2) return;
 

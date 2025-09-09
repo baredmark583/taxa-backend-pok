@@ -1,7 +1,8 @@
+
 import dotenv from 'dotenv';
 dotenv.config(); // Load environment variables from .env file
 
-import express, { Request, Response, NextFunction } from 'express';
+import express from 'express';
 import http from 'http';
 import { WebSocketServer } from 'ws';
 import cors from 'cors';
@@ -29,11 +30,9 @@ app.use(cors());
 // Middleware to parse JSON bodies for API routes.
 // FIX: Resolved a TypeScript overload error by separating middleware into distinct calls.
 app.use('/api', express.json());
-// FIX: Explicitly wrap apiRouter in a RequestHandler to solve type inference issues
-// that can occur in projects with conflicting @types packages (e.g., node vs. dom).
-app.use('/api', (req: Request, res: Response, next: NextFunction) => {
-  apiRouter(req, res, next);
-});
+// FIX: The explicit wrapper was causing type conflicts. Using the router directly is the standard
+// and correct way in Express, which resolves the type ambiguity.
+app.use('/api', apiRouter);
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
