@@ -3,7 +3,7 @@
 import dotenv from 'dotenv';
 dotenv.config(); // Load environment variables from .env file
 
-import express from 'express';
+import express, { RequestHandler } from 'express';
 import http from 'http';
 import { WebSocketServer } from 'ws';
 import cors from 'cors';
@@ -31,6 +31,7 @@ app.use(cors());
 // FIX: The express.json() middleware was causing a TypeScript error inside the api router.
 // It has been moved here and applied to the /api path before the router, which is the correct
 // place for it and resolves the type error.
+// FIX: Removed the type assertion on express.json() to resolve a type conflict with app.use().
 app.use('/api', express.json());
 app.use('/api', apiRouter);
 
