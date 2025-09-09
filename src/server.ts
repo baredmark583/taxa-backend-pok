@@ -31,8 +31,9 @@ app.use(cors());
 // FIX: The express.json() middleware was causing a TypeScript error inside the api router.
 // It has been moved here and applied to the /api path before the router, which is the correct
 // place for it and resolves the type error.
-// FIX: Removed the type assertion on express.json() to resolve a type conflict with app.use().
-app.use('/api', express.json());
+// FIX: Add a type assertion to `express.json()` to resolve a "No overload matches this call"
+// error. This is necessary to explicitly type the middleware when TypeScript fails to infer it.
+app.use('/api', express.json() as RequestHandler);
 app.use('/api', apiRouter);
 
 const server = http.createServer(app);
