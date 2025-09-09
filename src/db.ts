@@ -106,14 +106,20 @@ export const initializeDatabase = async () => {
         const allDefaults = { ...defaultAssets, ...defaultIcons };
         const defaultKeys = Object.keys(allDefaults);
         const defaultValues = Object.values(allDefaults);
-        const placeholders = defaultKeys.map((_, i) => `$${i + 2}`).join(', ');
-        const updatePlaceholders = defaultKeys.map((key, i) => `"${key}" = COALESCE("AssetConfig"."${key}", $${i + 2})`).join(', ');
+        
+        // Placeholders for the INSERT part, starting from $2 since $1 is for the id.
+        const insertPlaceholders = defaultKeys.map((_, i) => `$${i + 2}`).join(', ');
+
+        // The SET clause for the UPDATE part. Using COALESCE with EXCLUDED ensures that
+        // we only set the default value if the existing column is NULL, without re-referencing
+        // the parameter list, which caused the original error.
+        const updateSet = defaultKeys.map(key => `"${key}" = COALESCE("AssetConfig"."${key}", EXCLUDED."${key}")`).join(', ');
 
         await client.query(`
             INSERT INTO "AssetConfig" (id, ${defaultKeys.map(k => `"${k}"`).join(', ')})
-            VALUES (1, ${placeholders})
+            VALUES ($1, ${insertPlaceholders})
             ON CONFLICT (id) DO UPDATE SET
-                ${updatePlaceholders};
+                ${updateSet};
         `, [1, ...defaultValues]);
         
         // 3. CardAssets Table
