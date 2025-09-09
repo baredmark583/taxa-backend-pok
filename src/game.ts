@@ -404,53 +404,57 @@ class PokerGame {
     private async showdown() {
         this.state.activePlayerIndex = -1;
         this.state.gamePhase = GamePhase.SHOWDOWN;
-        
+    
         const contenders = this.state.players.filter(p => !p.isFolded);
-        
+    
         if (contenders.length === 1) {
-             const winner = contenders[0];
-             winner.stack += this.state.pot;
-             this.state.log = [`${winner.name} wins ${this.state.pot}!`];
-             this.state.pot = 0;
-             await this.updatePlayerBalanceInDB(winner);
-        } else {
-            let bestHand: HandResult | null = null;
-            let winners: Player[] = [];
-
+            const winner = contenders[0];
+            winner.stack += this.state.pot;
+            this.state.log = [`${winner.name} wins ${this.state.pot}!`];
+            this.state.pot = 0;
+            await this.updatePlayerBalanceInDB(winner);
+        } else if (contenders.length > 1) {
+            // Evaluate hands for all contenders first
             contenders.forEach(player => {
                 const allCards = [...player.cards, ...this.state.communityCards];
                 player.handResult = evaluateHand(allCards);
-                if (!bestHand || compareHandResults(player.handResult, bestHand) > 0) {
-                    bestHand = player.handResult;
+            });
+    
+            // Then, determine the best hand and winner(s) from the evaluated hands
+            let bestHand: HandResult = contenders[0].handResult!; // Safe non-null assertion
+            let winners: Player[] = [contenders[0]];
+    
+            for (let i = 1; i < contenders.length; i++) {
+                const player = contenders[i];
+                const comparison = compareHandResults(player.handResult!, bestHand);
+                if (comparison > 0) {
+                    bestHand = player.handResult!;
                     winners = [player];
-                } else if (bestHand && compareHandResults(player.handResult, bestHand) === 0) {
+                } else if (comparison === 0) {
                     winners.push(player);
                 }
-            });
-
-            // This guard clause ensures that if we proceed, `winners` has items and `bestHand` is not null.
-            // This satisfies the TypeScript compiler, preventing the 'never' type error, and also prevents division by zero.
-            if (winners.length > 0 && bestHand) {
-                const totalWinnings = this.state.pot;
-                const potPerWinner = Math.floor(totalWinnings / winners.length);
-                
-                // Use a for...of loop to correctly handle async DB updates.
-                for (const winner of winners) {
-                    winner.stack += potPerWinner;
-                    await this.updatePlayerBalanceInDB(winner);
-                }
-                
-                const winnerNames = winners.map(w => w.name).join(', ');
-                this.state.log = [`${winnerNames} wins ${totalWinnings} with a ${bestHand.name}!`];
-            } else if (contenders.length > 0) {
-                this.state.log = [`The pot of ${this.state.pot} is split.`];
             }
-            
+    
+            // Distribute the pot among the winners
+            const totalWinnings = this.state.pot;
+            const potPerWinner = Math.floor(totalWinnings / winners.length);
+    
+            for (const winner of winners) {
+                winner.stack += potPerWinner;
+                await this.updatePlayerBalanceInDB(winner);
+            }
+    
+            const winnerNames = winners.map(w => w.name).join(', ');
+            this.state.log = [`${winnerNames} wins ${totalWinnings} with a ${bestHand.name}!`];
+            this.state.pot = 0;
+        } else {
+            // This case (0 contenders) should ideally not be reached if a hand is in progress.
+            this.state.log = [`The pot of ${this.state.pot} is split.`];
             this.state.pot = 0;
         }
-        
+    
         this.broadcastState();
-
+    
         setTimeout(() => this.startNewHand(), 5000);
     }
     

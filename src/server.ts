@@ -27,14 +27,8 @@ const port = process.env.PORT || 3000;
 app.use(cors());
 
 
-// Middleware to parse JSON bodies for API routes.
-// FIX: Applying express.json() globally to avoid potential type overload conflicts when
-// multiple middleware are registered on the same path prefix.
-app.use(express.json());
-
-// Mount the API router.
-// FIX: Using the router directly is the standard practice in Express and resolves the type overload issue.
-app.use('/api', apiRouter);
+// FIX: Combined express.json() middleware and apiRouter in a single app.use() call to resolve a TypeScript overload error. The previous separation of these was likely an incorrect attempt to fix a related issue.
+app.use('/api', express.json(), apiRouter);
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
