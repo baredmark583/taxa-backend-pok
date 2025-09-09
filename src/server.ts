@@ -1,10 +1,8 @@
 
-
-
 import dotenv from 'dotenv';
 dotenv.config(); // Load environment variables from .env file
 
-import express from 'express';
+import express, { RequestHandler } from 'express';
 import http from 'http';
 import { WebSocketServer } from 'ws';
 import cors from 'cors';
@@ -34,7 +32,10 @@ app.use(cors());
 // place for it and resolves the type error.
 // FIX: Removed a problematic type assertion on `express.json()` that was causing a "No overload matches this call" error. 
 // TypeScript can now correctly infer the handler type.
-app.use('/api', express.json());
+// FIX: Resolves "No overload matches this call" by explicitly casting express.json() to RequestHandler.
+// This is necessary to disambiguate Express's Request type from the global fetch API Request type,
+// which can cause conflicts in a mixed-environment project.
+app.use('/api', express.json() as RequestHandler);
 app.use('/api', apiRouter);
 
 const server = http.createServer(app);
