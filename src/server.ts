@@ -28,9 +28,9 @@ app.use(cors());
 
 
 // FIX: The combined `app.use` call for `express.json()` and `apiRouter` was causing a TypeScript
-// overload resolution error. By splitting them into separate calls and applying `express.json()`
-// middleware globally (which is standard practice), we resolve the type ambiguity.
-app.use(express.json());
+// overload resolution error. This was resolved by removing the global `express.json()` middleware 
+// and applying it directly within `api.ts`, which simplifies the middleware chain at the application 
+// level and resolves the type ambiguity for `app.use('/api', apiRouter)`.
 app.use('/api', apiRouter);
 
 const server = http.createServer(app);

@@ -1,10 +1,13 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import { pool } from './db';
 import { Rank, Suit } from './types';
 import { defaultIcons } from './db';
 
 // FIX: Use named import for Router to resolve a type inference error in server.ts.
 export const apiRouter = Router();
+
+// FIX: Apply JSON parsing middleware directly to this router to handle POST/PUT request bodies.
+apiRouter.use(express.json());
 
 // Get all users
 // FIX: Removed /api prefix. It is now handled in server.ts
