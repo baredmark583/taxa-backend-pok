@@ -1,9 +1,10 @@
 
 
+
 import dotenv from 'dotenv';
 dotenv.config(); // Load environment variables from .env file
 
-import express, { RequestHandler } from 'express';
+import express from 'express';
 import http from 'http';
 import { WebSocketServer } from 'ws';
 import cors from 'cors';
@@ -31,9 +32,9 @@ app.use(cors());
 // FIX: The express.json() middleware was causing a TypeScript error inside the api router.
 // It has been moved here and applied to the /api path before the router, which is the correct
 // place for it and resolves the type error.
-// FIX: Add a type assertion to `express.json()` to resolve a "No overload matches this call"
-// error. This is necessary to explicitly type the middleware when TypeScript fails to infer it.
-app.use('/api', express.json() as RequestHandler);
+// FIX: Removed a problematic type assertion on `express.json()` that was causing a "No overload matches this call" error. 
+// TypeScript can now correctly infer the handler type.
+app.use('/api', express.json());
 app.use('/api', apiRouter);
 
 const server = http.createServer(app);

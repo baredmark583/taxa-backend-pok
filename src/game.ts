@@ -307,6 +307,8 @@ class PokerGame {
             p.cards = [this.deck.pop()!, this.deck.pop()!];
             p.bet = 0;
             p.isFolded = false;
+            p.isThinking = false;
+            p.lastActionDisplay = undefined;
             p.handResult = evaluateTwoCardHand(p.cards as [Card, Card]);
         });
 
@@ -330,6 +332,7 @@ class PokerGame {
         this.state.pot = this.state.smallBlind + this.state.bigBlind;
         this.state.currentBet = this.state.bigBlind;
         this.state.activePlayerIndex = (bbIndex + 1) % this.state.players.length;
+        this.state.players[this.state.activePlayerIndex].isThinking = true;
         this.state.lastRaiserIndex = bbIndex;
 
         this.broadcastState();
@@ -342,16 +345,23 @@ class PokerGame {
         }
 
         const player = this.state.players[playerIndex];
+        player.isThinking = false;
         
         // simplified logic
         switch(action.type) {
-            case 'fold': player.isFolded = true; break;
-            case 'check': break; // assume valid
+            case 'fold':
+                player.isFolded = true;
+                player.lastActionDisplay = 'Fold';
+                break;
+            case 'check':
+                player.lastActionDisplay = 'Check';
+                break;
             case 'call': 
                  const toCall = this.state.currentBet - player.bet;
                  player.stack -= toCall;
                  player.bet += toCall;
                  this.state.pot += toCall;
+                 player.lastActionDisplay = 'Call';
                  break;
             case 'raise':
                  const raiseAmount = action.amount;
@@ -361,6 +371,7 @@ class PokerGame {
                  player.bet = raiseAmount;
                  this.state.currentBet = raiseAmount;
                  this.state.lastRaiserIndex = playerIndex;
+                 player.lastActionDisplay = `Raise to ${raiseAmount}`;
                  break;
         }
 
@@ -387,6 +398,7 @@ class PokerGame {
             setTimeout(() => this.progressToNextPhase(), 1000);
         } else {
             this.state.activePlayerIndex = nextIndex;
+            this.state.players[nextIndex].isThinking = true;
         }
     }
 
@@ -400,7 +412,11 @@ class PokerGame {
     }
 
     private startBettingRound() {
-        this.state.players.forEach(p => { if (!p.isAllIn) p.bet = 0 });
+        this.state.players.forEach(p => { 
+            if (!p.isAllIn) p.bet = 0;
+            p.isThinking = false;
+            p.lastActionDisplay = undefined;
+        });
         this.state.currentBet = 0;
         
         let firstToAct = (this.state.players.findIndex(p => p.isDealer) + 1) % this.state.players.length;
@@ -409,6 +425,7 @@ class PokerGame {
         }
         
         this.state.activePlayerIndex = firstToAct;
+        this.state.players[firstToAct].isThinking = true;
         this.state.lastRaiserIndex = firstToAct;
         this.broadcastState();
     }
