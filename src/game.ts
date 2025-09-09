@@ -16,12 +16,87 @@ const shuffleDeck = (deck: Card[]): Card[] => {
   return deck;
 };
 
-// --- Hand Evaluation Logic (simplified for brevity) ---
+// --- Hand Evaluation Logic ---
+const HAND_RANKS = {
+    HIGH_CARD: 0, PAIR: 1, TWO_PAIR: 2, THREE_OF_A_KIND: 3, STRAIGHT: 4,
+    FLUSH: 5, FULL_HOUSE: 6, FOUR_OF_A_KIND: 7, STRAIGHT_FLUSH: 8, ROYAL_FLUSH: 9,
+};
+
 const evaluateHand = (allCards: Card[]): HandResult => {
-    // This is a placeholder for a proper hand evaluation function.
-    // A real implementation would be much more complex.
-    return { name: 'High Card', rank: 0, cards: allCards.slice(0, 5) };
-}
+    let bestHand: HandResult = { name: 'High Card', rank: -1, cards: [], rankValues: [] };
+
+    // Generate all 5-card combinations from the 7 available cards
+    for (let i = 0; i < allCards.length; i++) {
+        for (let j = i + 1; j < allCards.length; j++) {
+            const hand = allCards.filter((_, index) => index !== i && index !== j);
+            const sortedHand = [...hand].sort((a, b) => RANK_VALUES[b.rank] - RANK_VALUES[a.rank]);
+            const currentHandResult = get5CardHandResult(sortedHand);
+            if (compareHandResults(currentHandResult, bestHand) > 0) {
+                bestHand = currentHandResult;
+            }
+        }
+    }
+    return bestHand;
+};
+
+const get5CardHandResult = (hand: Card[]): HandResult => {
+    const ranks = hand.map(c => RANK_VALUES[c.rank]);
+    const suits = hand.map(c => c.suit);
+    const uniqueRanks = [...new Set(ranks)];
+    
+    const isFlush = new Set(suits).size === 1;
+    const rankSet = new Set(ranks);
+    const isStraight = rankSet.size === 5 && (Math.max(...ranks) - Math.min(...ranks) === 4 ||
+                       (JSON.stringify(uniqueRanks.sort((a,b)=>a-b)) === JSON.stringify([2,3,4,5,14]))); // Ace-low straight
+
+    if (isStraight && isFlush) {
+        if (Math.min(...ranks) === 10 && Math.max(...ranks) === 14) {
+            return { name: 'Royal Flush', rank: HAND_RANKS.ROYAL_FLUSH, cards: hand, rankValues: [HAND_RANKS.ROYAL_FLUSH] };
+        }
+        const highCard = ranks.includes(14) && ranks.includes(5) ? 5 : Math.max(...ranks); // Handle A-5 straight
+        return { name: 'Straight Flush', rank: HAND_RANKS.STRAIGHT_FLUSH, cards: hand, rankValues: [HAND_RANKS.STRAIGHT_FLUSH, highCard] };
+    }
+
+    const rankCounts = ranks.reduce((acc, rank) => { acc[rank] = (acc[rank] || 0) + 1; return acc; }, {} as Record<number, number>);
+    const counts = Object.values(rankCounts).sort((a, b) => b - a);
+    const rankKeys = Object.keys(rankCounts).map(Number).sort((a, b) => rankCounts[b] - rankCounts[a] || b - a);
+
+    if (counts[0] === 4) {
+        return { name: 'Four of a Kind', rank: HAND_RANKS.FOUR_OF_A_KIND, cards: hand, rankValues: [HAND_RANKS.FOUR_OF_A_KIND, rankKeys[0], rankKeys[1]] };
+    }
+    if (counts[0] === 3 && counts[1] === 2) {
+        return { name: 'Full House', rank: HAND_RANKS.FULL_HOUSE, cards: hand, rankValues: [HAND_RANKS.FULL_HOUSE, rankKeys[0], rankKeys[1]] };
+    }
+    if (isFlush) {
+        return { name: 'Flush', rank: HAND_RANKS.FLUSH, cards: hand, rankValues: [HAND_RANKS.FLUSH, ...ranks] };
+    }
+    if (isStraight) {
+        const highCard = ranks.includes(14) && ranks.includes(5) ? 5 : Math.max(...ranks);
+        return { name: 'Straight', rank: HAND_RANKS.STRAIGHT, cards: hand, rankValues: [HAND_RANKS.STRAIGHT, highCard] };
+    }
+    if (counts[0] === 3) {
+        return { name: 'Three of a Kind', rank: HAND_RANKS.THREE_OF_A_KIND, cards: hand, rankValues: [HAND_RANKS.THREE_OF_A_KIND, rankKeys[0], ...rankKeys.slice(1)] };
+    }
+    if (counts[0] === 2 && counts[1] === 2) {
+        return { name: 'Two Pair', rank: HAND_RANKS.TWO_PAIR, cards: hand, rankValues: [HAND_RANKS.TWO_PAIR, rankKeys[0], rankKeys[1], rankKeys[2]] };
+    }
+    if (counts[0] === 2) {
+        return { name: 'Pair', rank: HAND_RANKS.PAIR, cards: hand, rankValues: [HAND_RANKS.PAIR, rankKeys[0], ...rankKeys.slice(1)] };
+    }
+    return { name: 'High Card', rank: HAND_RANKS.HIGH_CARD, cards: hand, rankValues: [HAND_RANKS.HIGH_CARD, ...ranks] };
+};
+
+const compareHandResults = (a: HandResult, b: HandResult): number => {
+    if (!a.rankValues) return -1;
+    if (!b.rankValues) return 1;
+    for (let i = 0; i < Math.max(a.rankValues.length, b.rankValues.length); i++) {
+        const valA = a.rankValues[i] || 0;
+        const valB = b.rankValues[i] || 0;
+        if (valA > valB) return 1;
+        if (valA < valB) return -1;
+    }
+    return 0; // Tie
+};
 
 // --- Game Class ---
 
@@ -168,6 +243,7 @@ class PokerGame {
             p.cards = [this.deck.pop()!, this.deck.pop()!];
             p.bet = 0;
             p.isFolded = false;
+            p.handResult = undefined;
         });
 
         const newDealerIndex = (dealerIndex + 1) % this.state.players.length;
@@ -234,6 +310,11 @@ class PokerGame {
         // Skip folded or all-in players
         while(this.state.players[nextIndex].isFolded || this.state.players[nextIndex].isAllIn) {
             nextIndex = (nextIndex + 1) % this.state.players.length;
+            if (nextIndex === this.state.activePlayerIndex) { // Everyone else is folded/all-in
+                this.state.activePlayerIndex = -1;
+                setTimeout(() => this.progressToNextPhase(), 1000);
+                return;
+            }
         }
 
         // Simplified end-of-round logic
@@ -245,42 +326,108 @@ class PokerGame {
         }
     }
 
-    private async progressToNextPhase() {
-        // Logic to deal flop, turn, river, or showdown
-        if (this.state.gamePhase === GamePhase.PRE_FLOP) {
-            this.state.gamePhase = GamePhase.FLOP;
-            this.state.communityCards = [this.deck.pop()!, this.deck.pop()!, this.deck.pop()!];
-        } // etc...
+    private startBettingRound() {
+        this.state.players.forEach(p => { if (!p.isAllIn) p.bet = 0 });
+        this.state.currentBet = 0;
         
-        // For demo, we just end the hand and show winner
-        else {
-            this.state.gamePhase = GamePhase.SHOWDOWN;
-            const winner = this.state.players.find(p => !p.isFolded)!;
-            winner.stack += this.state.pot;
-            this.state.log = [`${winner.name} wins ${this.state.pot}!`];
-            this.state.pot = 0;
-            this.broadcastState();
-            
-            // Save winner's new balance to the database
-            try {
-                await pool.query(
-                    'UPDATE "Users" SET "playMoney" = $1 WHERE id = $2',
-                    [winner.stack, winner.id]
-                );
-            } catch (error) {
-                console.error(`Failed to update balance for winner ${winner.id}:`, error);
-            }
-
-            setTimeout(() => this.startNewHand(), 5000);
-            return;
+        let firstToAct = (this.state.players.findIndex(p => p.isDealer) + 1) % this.state.players.length;
+        while(this.state.players[firstToAct].isFolded || this.state.players[firstToAct].isAllIn) {
+             firstToAct = (firstToAct + 1) % this.state.players.length;
         }
         
-        // Reset for next betting round
-        this.state.players.forEach(p => p.bet = 0);
-        this.state.currentBet = 0;
-        this.state.activePlayerIndex = this.state.players.findIndex(p => p.isDealer); // Start with dealer
-        this.state.lastRaiserIndex = this.state.activePlayerIndex;
+        this.state.activePlayerIndex = firstToAct;
+        this.state.lastRaiserIndex = firstToAct;
         this.broadcastState();
+    }
+
+    private async progressToNextPhase() {
+        // Collect bets into pot
+        this.state.players.forEach(p => { this.state.pot += p.bet; p.bet = 0; });
+
+        // Check if only one player is left
+        const activePlayers = this.state.players.filter(p => !p.isFolded);
+        if (activePlayers.length === 1) {
+            return this.showdown();
+        }
+
+        switch (this.state.gamePhase) {
+            case GamePhase.PRE_FLOP:
+                this.state.gamePhase = GamePhase.FLOP;
+                this.state.communityCards = [this.deck.pop()!, this.deck.pop()!, this.deck.pop()!];
+                this.startBettingRound();
+                break;
+            case GamePhase.FLOP:
+                this.state.gamePhase = GamePhase.TURN;
+                this.state.communityCards.push(this.deck.pop()!);
+                this.startBettingRound();
+                break;
+            case GamePhase.TURN:
+                this.state.gamePhase = GamePhase.RIVER;
+                this.state.communityCards.push(this.deck.pop()!);
+                this.startBettingRound();
+                break;
+            case GamePhase.RIVER:
+                this.state.gamePhase = GamePhase.SHOWDOWN;
+                await this.showdown();
+                break;
+            default:
+                break;
+        }
+    }
+    
+    private async showdown() {
+        this.state.activePlayerIndex = -1;
+        this.state.gamePhase = GamePhase.SHOWDOWN;
+        
+        const contenders = this.state.players.filter(p => !p.isFolded);
+        
+        if (contenders.length === 1) {
+             const winner = contenders[0];
+             winner.stack += this.state.pot;
+             this.state.log = [`${winner.name} wins ${this.state.pot}!`];
+             this.state.pot = 0;
+             this.broadcastState();
+             await this.updatePlayerBalanceInDB(winner);
+        } else {
+            let bestHand: HandResult | null = null;
+            let winners: Player[] = [];
+
+            contenders.forEach(player => {
+                const allCards = [...player.cards, ...this.state.communityCards];
+                player.handResult = evaluateHand(allCards);
+                if (!bestHand || compareHandResults(player.handResult, bestHand) > 0) {
+                    bestHand = player.handResult;
+                    winners = [player];
+                } else if (compareHandResults(player.handResult, bestHand!) === 0) {
+                    winners.push(player);
+                }
+            });
+
+            const potPerWinner = Math.floor(this.state.pot / winners.length);
+            winners.forEach(winner => {
+                winner.stack += potPerWinner;
+                this.updatePlayerBalanceInDB(winner);
+            });
+            
+            const winnerNames = winners.map(w => w.name).join(', ');
+            this.state.log = [`${winnerNames} wins ${this.state.pot} with a ${bestHand?.name}!`];
+            this.state.pot = 0;
+        }
+        
+        this.broadcastState();
+
+        setTimeout(() => this.startNewHand(), 5000);
+    }
+    
+    private async updatePlayerBalanceInDB(player: Player) {
+        try {
+            await pool.query(
+                'UPDATE "Users" SET "playMoney" = $1 WHERE id = $2',
+                [player.stack, player.id]
+            );
+        } catch (error) {
+            console.error(`Failed to update balance for winner ${player.id}:`, error);
+        }
     }
 }
 

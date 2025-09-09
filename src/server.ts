@@ -28,8 +28,11 @@ app.use(cors());
 
 
 // Middleware to parse JSON bodies for API routes.
-// FIX: Resolved a TypeScript overload error by separating middleware into distinct calls.
-app.use('/api', express.json());
+// FIX: Applying express.json() globally to avoid potential type overload conflicts when
+// multiple middleware are registered on the same path prefix.
+app.use(express.json());
+
+// Mount the API router.
 // FIX: The explicit wrapper was causing type conflicts. Using the router directly is the standard
 // and correct way in Express, which resolves the type ambiguity.
 app.use('/api', apiRouter);

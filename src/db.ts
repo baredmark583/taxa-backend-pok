@@ -14,6 +14,23 @@ const defaultAssets = {
     godModePassword: 'reveal_cards_42',
 };
 
+export const defaultIcons = {
+    iconFavicon: 'https://api.iconify.design/icon-park/poker.svg',
+    iconManifest: 'https://api.iconify.design/icon-park/poker.svg',
+    iconCrypto: 'https://api.iconify.design/ph/currency-ton-bold.svg',
+    iconPlayMoney: 'https://api.iconify.design/ion/cash-outline.svg',
+    iconExit: 'https://api.iconify.design/solar/logout-3-linear.svg',
+    iconSettings: 'https://api.iconify.design/solar/settings-linear.svg',
+    iconUsers: 'https://api.iconify.design/ph/users-three.svg',
+    iconDealerChip: 'https://api.iconify.design/mdi/letter-d-box.svg',
+    iconPokerChip: 'https://api.iconify.design/icon-park/poker.svg',
+    iconSlotMachine: 'https://api.iconify.design/icon-park/slot-machine.svg',
+    iconRoulette: 'https://api.iconify.design/icon-park/roulette.svg',
+    iconFold: 'https://api.iconify.design/mdi/hand-back-right-off-outline.svg',
+    iconCall: 'https://api.iconify.design/mdi/check.svg',
+    iconRaise: 'https://api.iconify.design/mdi/arrow-up-bold.svg',
+};
+
 const defaultSlotSymbols = [
     { name: 'SEVEN', imageUrl: 'https://www.svgrepo.com/show/19161/seven.svg', payout: 100, weight: 1 },
     { name: 'BAR', imageUrl: 'https://www.svgrepo.com/show/210397/maps-and-flags-casino.svg', payout: 50, weight: 2 },
@@ -66,7 +83,6 @@ export const initializeDatabase = async () => {
         await client.query(`UPDATE "Users" SET "role" = 'ADMIN' WHERE "id" = $1;`, [ADMIN_USER_ID]);
 
         // 2. General AssetConfig Table
-        // Step 1: Create the table with only the primary key if it doesn't exist.
         await client.query(`
             CREATE TABLE IF NOT EXISTS "AssetConfig" (
                 "id" INTEGER PRIMARY KEY DEFAULT 1,
@@ -74,24 +90,31 @@ export const initializeDatabase = async () => {
             );
         `);
         
-        // Step 2: Add columns individually if they don't exist. This acts as a migration.
-        await client.query(`ALTER TABLE "AssetConfig" ADD COLUMN IF NOT EXISTS "cardBackUrl" TEXT;`);
-        await client.query(`ALTER TABLE "AssetConfig" ADD COLUMN IF NOT EXISTS "tableBackgroundUrl" TEXT;`);
-        await client.query(`ALTER TABLE "AssetConfig" ADD COLUMN IF NOT EXISTS "godModePassword" TEXT;`);
-
-        // Step 3: Remove any old columns from previous versions.
+        // Add columns for general assets and icons if they don't exist.
+        const assetColumns = {
+            ...Object.keys(defaultAssets).reduce((acc, key) => ({ ...acc, [key]: 'TEXT' }), {}),
+            ...Object.keys(defaultIcons).reduce((acc, key) => ({ ...acc, [key]: 'TEXT' }), {})
+        };
+        for (const [colName, colType] of Object.entries(assetColumns)) {
+            await client.query(`ALTER TABLE "AssetConfig" ADD COLUMN IF NOT EXISTS "${colName}" ${colType};`);
+        }
+        
+        // Remove any old columns from previous versions.
         await client.query(`ALTER TABLE "AssetConfig" DROP COLUMN IF EXISTS "cardFaceUrlPattern";`);
         
-        // Step 4: Seed AssetConfig with default values. This is safe because the columns are guaranteed to exist now.
-        // COALESCE ensures we don't overwrite existing settings with defaults on subsequent runs.
+        // Seed AssetConfig with default values.
+        const allDefaults = { ...defaultAssets, ...defaultIcons };
+        const defaultKeys = Object.keys(allDefaults);
+        const defaultValues = Object.values(allDefaults);
+        const placeholders = defaultKeys.map((_, i) => `$${i + 2}`).join(', ');
+        const updatePlaceholders = defaultKeys.map((key, i) => `"${key}" = COALESCE("AssetConfig"."${key}", $${i + 2})`).join(', ');
+
         await client.query(`
-            INSERT INTO "AssetConfig" (id, "cardBackUrl", "tableBackgroundUrl", "godModePassword")
-            VALUES (1, $1, $2, $3)
+            INSERT INTO "AssetConfig" (id, ${defaultKeys.map(k => `"${k}"`).join(', ')})
+            VALUES (1, ${placeholders})
             ON CONFLICT (id) DO UPDATE SET
-                "cardBackUrl" = COALESCE("AssetConfig"."cardBackUrl", $1),
-                "tableBackgroundUrl" = COALESCE("AssetConfig"."tableBackgroundUrl", $2),
-                "godModePassword" = COALESCE("AssetConfig"."godModePassword", $3);
-        `, [defaultAssets.cardBackUrl, defaultAssets.tableBackgroundUrl, defaultAssets.godModePassword]);
+                ${updatePlaceholders};
+        `, [1, ...defaultValues]);
         
         // 3. CardAssets Table
         await client.query(`

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { pool } from './db';
 import { Rank, Suit } from './types';
+import { defaultIcons } from './db';
 
 // FIX: Use named import for Router to resolve a type inference error in server.ts.
 export const apiRouter = Router();
@@ -95,7 +96,7 @@ apiRouter.post('/users/:id/role', async (req, res) => {
 // FIX: Removed /api prefix. It is now handled in server.ts
 apiRouter.get('/assets', async (req, res) => {
     try {
-        const configRes = await pool.query('SELECT "cardBackUrl", "tableBackgroundUrl", "godModePassword" FROM "AssetConfig" WHERE id = 1');
+        const configRes = await pool.query('SELECT * FROM "AssetConfig" WHERE id = 1');
         if (configRes.rows.length === 0) {
              return res.status(404).json({ error: 'Asset configuration not found.' });
         }
@@ -125,16 +126,25 @@ apiRouter.get('/assets', async (req, res) => {
 // Update asset configuration
 // FIX: Removed /api prefix. It is now handled in server.ts
 apiRouter.post('/assets', async (req, res) => {
-    const { cardBackUrl, tableBackgroundUrl, godModePassword, cardFaces, slotSymbols } = req.body;
+    const { 
+        cardBackUrl, tableBackgroundUrl, godModePassword, cardFaces, slotSymbols,
+        ...icons 
+    } = req.body;
+    
     const client = await pool.connect();
+    
+    // Prepare icon fields for the query
+    const iconFields = Object.keys(defaultIcons);
+    const iconUpdateSet = iconFields.map((field, i) => `"${field}" = $${i + 4}`).join(', ');
+    const iconValues = iconFields.map(field => icons[field]);
 
     try {
         await client.query('BEGIN');
 
-        // 1. Update general config
+        // 1. Update general config including icons
         await client.query(
-            `UPDATE "AssetConfig" SET "cardBackUrl" = $1, "tableBackgroundUrl" = $2, "godModePassword" = $3 WHERE id = 1`,
-            [cardBackUrl, tableBackgroundUrl, godModePassword]
+            `UPDATE "AssetConfig" SET "cardBackUrl" = $1, "tableBackgroundUrl" = $2, "godModePassword" = $3, ${iconUpdateSet} WHERE id = 1`,
+            [cardBackUrl, tableBackgroundUrl, godModePassword, ...iconValues]
         );
 
         // 2. Update card faces (clear and re-insert)
@@ -202,12 +212,18 @@ apiRouter.post('/assets/reset', async (req, res) => {
     ];
     
     const client = await pool.connect();
+    
+    // Prepare icon fields for the query
+    const iconFields = Object.keys(defaultIcons);
+    const iconUpdateSet = iconFields.map((field, i) => `"${field}" = $${i + 4}`).join(', ');
+    const iconValues = Object.values(defaultIcons);
+
     try {
         await client.query('BEGIN');
 
         await client.query(
-            `UPDATE "AssetConfig" SET "cardBackUrl" = $1, "tableBackgroundUrl" = $2, "godModePassword" = $3 WHERE id = 1`,
-            ['https://www.svgrepo.com/show/472548/card-back.svg', 'https://wallpapercave.com/wp/wp1852445.jpg', 'reveal_cards_42']
+            `UPDATE "AssetConfig" SET "cardBackUrl" = $1, "tableBackgroundUrl" = $2, "godModePassword" = $3, ${iconUpdateSet} WHERE id = 1`,
+            ['https://www.svgrepo.com/show/472548/card-back.svg', 'https://wallpapercave.com/wp/wp1852445.jpg', 'reveal_cards_42', ...iconValues]
         );
         
         await client.query('TRUNCATE TABLE "CardAssets"');
@@ -233,8 +249,7 @@ apiRouter.post('/assets/reset', async (req, res) => {
 
         await client.query('COMMIT');
         
-        // A simpler refetch if the complex query above fails on some pg versions
-        const configRes = await pool.query('SELECT "cardBackUrl", "tableBackgroundUrl", "godModePassword" FROM "AssetConfig" WHERE id = 1');
+        const configRes = await pool.query('SELECT * FROM "AssetConfig" WHERE id = 1');
         const cardsRes = await pool.query('SELECT suit, rank, "imageUrl" FROM "CardAssets"');
         const cardFaces = cardsRes.rows.reduce((acc, row) => {
             if (!acc[row.suit]) acc[row.suit] = {};
@@ -273,5 +288,24 @@ apiRouter.post('/admin/login', (req, res) => {
         res.json({ success: true });
     } else {
         res.status(401).json({ error: 'Invalid password.' });
+    }
+});
+
+// Dynamically serve tonconnect-manifest.json
+apiRouter.get('/tonconnect-manifest.json', async (req, res) => {
+    try {
+        const configRes = await pool.query('SELECT "iconManifest" FROM "AssetConfig" WHERE id = 1');
+        if (configRes.rows.length === 0) {
+             return res.status(404).json({ error: 'Configuration not found.' });
+        }
+        const manifest = {
+            url: process.env.FRONTEND_URL || 'https://taxaai.onrender.com', // Fallback URL
+            name: "Crypto Poker Club",
+            iconUrl: configRes.rows[0].iconManifest || 'https://api.iconify.design/icon-park/poker.svg',
+        };
+        res.json(manifest);
+    } catch (error) {
+         console.error('Error generating manifest:', error);
+        res.status(500).json({ error: 'Failed to generate manifest.' });
     }
 });

@@ -30,6 +30,7 @@ export interface HandResult {
   name: string;
   rank: number;
   cards: Card[];
+  rankValues?: number[];
 }
 
 export interface Player {
