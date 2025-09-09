@@ -1,4 +1,5 @@
 
+
 import dotenv from 'dotenv';
 dotenv.config(); // Load environment variables from .env file
 
@@ -27,10 +28,10 @@ const port = process.env.PORT || 3000;
 app.use(cors());
 
 
-// FIX: The combined `app.use` call for `express.json()` and `apiRouter` was causing a TypeScript
-// overload resolution error. This was resolved by removing the global `express.json()` middleware 
-// and applying it directly within `api.ts`, which simplifies the middleware chain at the application 
-// level and resolves the type ambiguity for `app.use('/api', apiRouter)`.
+// FIX: The express.json() middleware was causing a TypeScript error inside the api router.
+// It has been moved here and applied to the /api path before the router, which is the correct
+// place for it and resolves the type error.
+app.use('/api', express.json());
 app.use('/api', apiRouter);
 
 const server = http.createServer(app);

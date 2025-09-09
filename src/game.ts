@@ -22,13 +22,50 @@ const HAND_RANKS = {
     FLUSH: 5, FULL_HOUSE: 6, FOUR_OF_A_KIND: 7, STRAIGHT_FLUSH: 8, ROYAL_FLUSH: 9,
 };
 
-const evaluateHand = (allCards: Card[]): HandResult => {
-    let bestHand: HandResult = { name: 'High Card', rank: -1, cards: [], rankValues: [] };
+const HAND_NAMES_RU = {
+    [HAND_RANKS.ROYAL_FLUSH]: 'Роял-флеш',
+    [HAND_RANKS.STRAIGHT_FLUSH]: 'Стрит-флеш',
+    [HAND_RANKS.FOUR_OF_A_KIND]: 'Каре',
+    [HAND_RANKS.FULL_HOUSE]: 'Фулл-хаус',
+    [HAND_RANKS.FLUSH]: 'Флеш',
+    [HAND_RANKS.STRAIGHT]: 'Стрит',
+    [HAND_RANKS.THREE_OF_A_KIND]: 'Тройка',
+    [HAND_RANKS.TWO_PAIR]: 'Две пары',
+    [HAND_RANKS.PAIR]: 'Пара',
+    [HAND_RANKS.HIGH_CARD]: 'Старшая карта',
+};
 
+
+const evaluateTwoCardHand = (cards: [Card, Card]): HandResult => {
+    const sortedHand = [...cards].sort((a, b) => RANK_VALUES[b.rank] - RANK_VALUES[a.rank]);
+    const ranks = sortedHand.map(c => RANK_VALUES[c.rank]);
+    if (sortedHand[0].rank === sortedHand[1].rank) {
+        return {
+            name: HAND_NAMES_RU[HAND_RANKS.PAIR],
+            rank: HAND_RANKS.PAIR,
+            cards: sortedHand,
+            rankValues: [HAND_RANKS.PAIR, ranks[0], ranks[1]]
+        };
+    }
+    return {
+        name: HAND_NAMES_RU[HAND_RANKS.HIGH_CARD],
+        rank: HAND_RANKS.HIGH_CARD,
+        cards: sortedHand,
+        rankValues: [HAND_RANKS.HIGH_CARD, ...ranks]
+    };
+};
+
+const evaluateHand = (allCards: Card[]): HandResult => {
+    if (allCards.length < 2) return { name: '', rank: -1, cards: [] };
+    if (allCards.length === 2) return evaluateTwoCardHand(allCards as [Card, Card]);
+
+    let bestHand: HandResult = { name: 'Старшая карта', rank: -1, cards: [], rankValues: [] };
+    
     // This logic requires at least 5 cards to form a hand.
     if (allCards.length < 5) {
-        // Not enough cards to evaluate a standard poker hand, return a default.
-        return bestHand;
+        // Not enough cards to evaluate a standard poker hand, return a default based on highest cards.
+        const sorted = [...allCards].sort((a,b) => RANK_VALUES[b.rank] - RANK_VALUES[a.rank]);
+        return { ...evaluateTwoCardHand([sorted[0], sorted[1]]), cards: sorted };
     }
 
     // Generate all 5-card combinations from the available cards
@@ -77,10 +114,10 @@ const get5CardHandResult = (hand: Card[]): HandResult => {
 
     if (isStraight && isFlush) {
         if (Math.min(...ranks) === 10 && Math.max(...ranks) === 14) {
-            return { name: 'Royal Flush', rank: HAND_RANKS.ROYAL_FLUSH, cards: hand, rankValues: [HAND_RANKS.ROYAL_FLUSH] };
+            return { name: HAND_NAMES_RU[HAND_RANKS.ROYAL_FLUSH], rank: HAND_RANKS.ROYAL_FLUSH, cards: hand, rankValues: [HAND_RANKS.ROYAL_FLUSH] };
         }
         const highCard = ranks.includes(14) && ranks.includes(5) ? 5 : Math.max(...ranks); // Handle A-5 straight
-        return { name: 'Straight Flush', rank: HAND_RANKS.STRAIGHT_FLUSH, cards: hand, rankValues: [HAND_RANKS.STRAIGHT_FLUSH, highCard] };
+        return { name: HAND_NAMES_RU[HAND_RANKS.STRAIGHT_FLUSH], rank: HAND_RANKS.STRAIGHT_FLUSH, cards: hand, rankValues: [HAND_RANKS.STRAIGHT_FLUSH, highCard] };
     }
 
     const rankCounts = ranks.reduce((acc, rank) => { acc[rank] = (acc[rank] || 0) + 1; return acc; }, {} as Record<number, number>);
@@ -88,28 +125,28 @@ const get5CardHandResult = (hand: Card[]): HandResult => {
     const rankKeys = Object.keys(rankCounts).map(Number).sort((a, b) => rankCounts[b] - rankCounts[a] || b - a);
 
     if (counts[0] === 4) {
-        return { name: 'Four of a Kind', rank: HAND_RANKS.FOUR_OF_A_KIND, cards: hand, rankValues: [HAND_RANKS.FOUR_OF_A_KIND, rankKeys[0], rankKeys[1]] };
+        return { name: HAND_NAMES_RU[HAND_RANKS.FOUR_OF_A_KIND], rank: HAND_RANKS.FOUR_OF_A_KIND, cards: hand, rankValues: [HAND_RANKS.FOUR_OF_A_KIND, rankKeys[0], rankKeys[1]] };
     }
     if (counts[0] === 3 && counts[1] === 2) {
-        return { name: 'Full House', rank: HAND_RANKS.FULL_HOUSE, cards: hand, rankValues: [HAND_RANKS.FULL_HOUSE, rankKeys[0], rankKeys[1]] };
+        return { name: HAND_NAMES_RU[HAND_RANKS.FULL_HOUSE], rank: HAND_RANKS.FULL_HOUSE, cards: hand, rankValues: [HAND_RANKS.FULL_HOUSE, rankKeys[0], rankKeys[1]] };
     }
     if (isFlush) {
-        return { name: 'Flush', rank: HAND_RANKS.FLUSH, cards: hand, rankValues: [HAND_RANKS.FLUSH, ...ranks] };
+        return { name: HAND_NAMES_RU[HAND_RANKS.FLUSH], rank: HAND_RANKS.FLUSH, cards: hand, rankValues: [HAND_RANKS.FLUSH, ...ranks] };
     }
     if (isStraight) {
         const highCard = ranks.includes(14) && ranks.includes(5) ? 5 : Math.max(...ranks);
-        return { name: 'Straight', rank: HAND_RANKS.STRAIGHT, cards: hand, rankValues: [HAND_RANKS.STRAIGHT, highCard] };
+        return { name: HAND_NAMES_RU[HAND_RANKS.STRAIGHT], rank: HAND_RANKS.STRAIGHT, cards: hand, rankValues: [HAND_RANKS.STRAIGHT, highCard] };
     }
     if (counts[0] === 3) {
-        return { name: 'Three of a Kind', rank: HAND_RANKS.THREE_OF_A_KIND, cards: hand, rankValues: [HAND_RANKS.THREE_OF_A_KIND, rankKeys[0], ...rankKeys.slice(1)] };
+        return { name: HAND_NAMES_RU[HAND_RANKS.THREE_OF_A_KIND], rank: HAND_RANKS.THREE_OF_A_KIND, cards: hand, rankValues: [HAND_RANKS.THREE_OF_A_KIND, rankKeys[0], ...rankKeys.slice(1)] };
     }
     if (counts[0] === 2 && counts[1] === 2) {
-        return { name: 'Two Pair', rank: HAND_RANKS.TWO_PAIR, cards: hand, rankValues: [HAND_RANKS.TWO_PAIR, rankKeys[0], rankKeys[1], rankKeys[2]] };
+        return { name: HAND_NAMES_RU[HAND_RANKS.TWO_PAIR], rank: HAND_RANKS.TWO_PAIR, cards: hand, rankValues: [HAND_RANKS.TWO_PAIR, rankKeys[0], rankKeys[1], rankKeys[2]] };
     }
     if (counts[0] === 2) {
-        return { name: 'Pair', rank: HAND_RANKS.PAIR, cards: hand, rankValues: [HAND_RANKS.PAIR, rankKeys[0], ...rankKeys.slice(1)] };
+        return { name: HAND_NAMES_RU[HAND_RANKS.PAIR], rank: HAND_RANKS.PAIR, cards: hand, rankValues: [HAND_RANKS.PAIR, rankKeys[0], ...rankKeys.slice(1)] };
     }
-    return { name: 'High Card', rank: HAND_RANKS.HIGH_CARD, cards: hand, rankValues: [HAND_RANKS.HIGH_CARD, ...ranks] };
+    return { name: HAND_NAMES_RU[HAND_RANKS.HIGH_CARD], rank: HAND_RANKS.HIGH_CARD, cards: hand, rankValues: [HAND_RANKS.HIGH_CARD, ...ranks] };
 };
 
 const compareHandResults = (a: HandResult, b: HandResult): number => {
@@ -201,6 +238,7 @@ class PokerGame {
                 cards: [], bet: 0, isFolded: false, isAllIn: false,
                 isDealer: false, isSmallBlind: false, isBigBlind: false,
                 isThinking: false, position: emptySeatIndex,
+                avatarUrl: telegramUser.photo_url,
             };
 
             this.playerSeats[emptySeatIndex] = newPlayer;
@@ -269,7 +307,7 @@ class PokerGame {
             p.cards = [this.deck.pop()!, this.deck.pop()!];
             p.bet = 0;
             p.isFolded = false;
-            p.handResult = undefined;
+            p.handResult = evaluateTwoCardHand(p.cards as [Card, Card]);
         });
 
         const newDealerIndex = (dealerIndex + 1) % this.state.players.length;
@@ -352,6 +390,15 @@ class PokerGame {
         }
     }
 
+    private updateAllPlayerHands() {
+        this.state.players.forEach(player => {
+            if (!player.isFolded) {
+                const allCards = [...player.cards, ...this.state.communityCards];
+                player.handResult = evaluateHand(allCards);
+            }
+        });
+    }
+
     private startBettingRound() {
         this.state.players.forEach(p => { if (!p.isAllIn) p.bet = 0 });
         this.state.currentBet = 0;
@@ -380,16 +427,19 @@ class PokerGame {
             case GamePhase.PRE_FLOP:
                 this.state.gamePhase = GamePhase.FLOP;
                 this.state.communityCards = [this.deck.pop()!, this.deck.pop()!, this.deck.pop()!];
+                this.updateAllPlayerHands();
                 this.startBettingRound();
                 break;
             case GamePhase.FLOP:
                 this.state.gamePhase = GamePhase.TURN;
                 this.state.communityCards.push(this.deck.pop()!);
+                this.updateAllPlayerHands();
                 this.startBettingRound();
                 break;
             case GamePhase.TURN:
                 this.state.gamePhase = GamePhase.RIVER;
                 this.state.communityCards.push(this.deck.pop()!);
+                this.updateAllPlayerHands();
                 this.startBettingRound();
                 break;
             case GamePhase.RIVER:
@@ -404,6 +454,7 @@ class PokerGame {
     private async showdown() {
         this.state.activePlayerIndex = -1;
         this.state.gamePhase = GamePhase.SHOWDOWN;
+        this.updateAllPlayerHands();
     
         const contenders = this.state.players.filter(p => !p.isFolded);
     
@@ -414,14 +465,8 @@ class PokerGame {
             this.state.pot = 0;
             await this.updatePlayerBalanceInDB(winner);
         } else if (contenders.length > 1) {
-            // Evaluate hands for all contenders first
-            contenders.forEach(player => {
-                const allCards = [...player.cards, ...this.state.communityCards];
-                player.handResult = evaluateHand(allCards);
-            });
-    
-            // Then, determine the best hand and winner(s) from the evaluated hands
-            let bestHand: HandResult = contenders[0].handResult!; // Safe non-null assertion
+            // Hands are already evaluated in updateAllPlayerHands
+            let bestHand: HandResult = contenders[0].handResult!;
             let winners: Player[] = [contenders[0]];
     
             for (let i = 1; i < contenders.length; i++) {

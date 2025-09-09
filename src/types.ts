@@ -46,6 +46,7 @@ export interface Player {
   isBigBlind: boolean;
   isThinking: boolean;
   position: number;
+  avatarUrl?: string;
   handResult?: HandResult;
 }
 
@@ -123,6 +124,7 @@ export interface TelegramUser {
   first_name: string;
   last_name?: string;
   username?: string;
+  photo_url?: string;
 }
 
 // For Slots game
