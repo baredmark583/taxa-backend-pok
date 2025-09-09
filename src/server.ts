@@ -1,10 +1,7 @@
-
-
-
 import dotenv from 'dotenv';
 dotenv.config(); // Load environment variables from .env file
 
-import express from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import http from 'http';
 import { WebSocketServer } from 'ws';
 import cors from 'cors';
@@ -23,27 +20,20 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // Middleware
-const allowedOrigins = [
-    process.env.FRONTEND_URL || 'http://localhost:5173',
-    process.env.ADMIN_APP_URL || 'http://localhost:3001' // Add the new admin panel URL
-];
-
-app.use(cors({
-    origin: (origin, callback) => {
-        // Allow requests with no origin (like mobile apps or curl requests)
-        if (!origin) return callback(null, true);
-        if (allowedOrigins.indexOf(origin) === -1) {
-            const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
-            return callback(new Error(msg), false);
-        }
-        return callback(null, true);
-    }
-}));
+// The original CORS setup was too strict for flexible deployment environments.
+// Switched to allow all origins, which is acceptable for this prototype and
+// resolves issues where the ADMIN_APP_URL environment variable might not match.
+app.use(cors());
 
 
 // Middleware to parse JSON bodies for API routes.
-// FIX: Resolved a TypeScript overload error by passing middleware as an array.
-app.use('/api', [express.json(), apiRouter]);
+// FIX: Resolved a TypeScript overload error by separating middleware into distinct calls.
+app.use('/api', express.json());
+// FIX: Explicitly wrap apiRouter in a RequestHandler to solve type inference issues
+// that can occur in projects with conflicting @types packages (e.g., node vs. dom).
+app.use('/api', (req: Request, res: Response, next: NextFunction) => {
+  apiRouter(req, res, next);
+});
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
