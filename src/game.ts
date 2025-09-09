@@ -25,17 +25,43 @@ const HAND_RANKS = {
 const evaluateHand = (allCards: Card[]): HandResult => {
     let bestHand: HandResult = { name: 'High Card', rank: -1, cards: [], rankValues: [] };
 
-    // Generate all 5-card combinations from the 7 available cards
-    for (let i = 0; i < allCards.length; i++) {
-        for (let j = i + 1; j < allCards.length; j++) {
-            const hand = allCards.filter((_, index) => index !== i && index !== j);
-            const sortedHand = [...hand].sort((a, b) => RANK_VALUES[b.rank] - RANK_VALUES[a.rank]);
-            const currentHandResult = get5CardHandResult(sortedHand);
-            if (compareHandResults(currentHandResult, bestHand) > 0) {
-                bestHand = currentHandResult;
-            }
+    // This logic requires at least 5 cards to form a hand.
+    if (allCards.length < 5) {
+        // Not enough cards to evaluate a standard poker hand, return a default.
+        return bestHand;
+    }
+
+    // Generate all 5-card combinations from the available cards
+    const combinations = (arr: Card[], k: number): Card[][] => {
+        if (k > arr.length || k <= 0) {
+            return [];
+        }
+        if (k === arr.length) {
+            return [arr];
+        }
+        if (k === 1) {
+            return arr.map(item => [item]);
+        }
+        const combs: Card[][] = [];
+        arr.forEach((item, index) => {
+            const smallerCombs = combinations(arr.slice(index + 1), k - 1);
+            smallerCombs.forEach(smallerComb => {
+                combs.push([item].concat(smallerComb));
+            });
+        });
+        return combs;
+    };
+    
+    const fiveCardHands = combinations(allCards, 5);
+
+    for (const hand of fiveCardHands) {
+        const sortedHand = [...hand].sort((a, b) => RANK_VALUES[b.rank] - RANK_VALUES[a.rank]);
+        const currentHandResult = get5CardHandResult(sortedHand);
+        if (compareHandResults(currentHandResult, bestHand) > 0) {
+            bestHand = currentHandResult;
         }
     }
+
     return bestHand;
 };
 
@@ -398,19 +424,25 @@ class PokerGame {
                 if (!bestHand || compareHandResults(player.handResult, bestHand) > 0) {
                     bestHand = player.handResult;
                     winners = [player];
-                } else if (compareHandResults(player.handResult, bestHand!) === 0) {
+                } else if (bestHand && compareHandResults(player.handResult, bestHand) === 0) {
                     winners.push(player);
                 }
             });
 
-            const potPerWinner = Math.floor(this.state.pot / winners.length);
-            winners.forEach(winner => {
-                winner.stack += potPerWinner;
-                this.updatePlayerBalanceInDB(winner);
-            });
+            if (winners.length > 0 && bestHand) {
+                const totalWinnings = this.state.pot;
+                const potPerWinner = Math.floor(totalWinnings / winners.length);
+                winners.forEach(winner => {
+                    winner.stack += potPerWinner;
+                    this.updatePlayerBalanceInDB(winner);
+                });
+                
+                const winnerNames = winners.map(w => w.name).join(', ');
+                this.state.log = [`${winnerNames} wins ${totalWinnings} with a ${bestHand.name}!`];
+            } else if (contenders.length > 0) {
+                this.state.log = [`The pot of ${this.state.pot} is split.`];
+            }
             
-            const winnerNames = winners.map(w => w.name).join(', ');
-            this.state.log = [`${winnerNames} wins ${this.state.pot} with a ${bestHand?.name}!`];
             this.state.pot = 0;
         }
         

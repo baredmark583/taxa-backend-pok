@@ -33,9 +33,9 @@ app.use(cors());
 app.use(express.json());
 
 // Mount the API router.
-// FIX: The explicit wrapper was causing type conflicts. Using the router directly is the standard
-// and correct way in Express, which resolves the type ambiguity.
-app.use('/api', apiRouter);
+// FIX: Using an explicit middleware function wrapper for the apiRouter
+// to resolve a complex type inference issue with app.use().
+app.use('/api', (req, res, next) => apiRouter(req, res, next));
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
