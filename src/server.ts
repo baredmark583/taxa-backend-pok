@@ -1,3 +1,4 @@
+
 import dotenv from 'dotenv';
 dotenv.config(); // Load environment variables from .env file
 
@@ -32,11 +33,10 @@ const host = '0.0.0.0';
 // resolves issues where the ADMIN_APP_URL environment variable might not match.
 app.use(cors());
 
-// FIX: To resolve a TypeScript overload error on `app.use`, the `express.json()`
-// middleware is now applied directly to the `/api` route.
-// FIX: Split `app.use` into separate calls to resolve a TypeScript overload error with middleware signatures.
-app.use('/api', express.json());
-app.use('/api', apiRouter);
+// FIX: Combined express.json() middleware with the apiRouter to resolve a TypeScript overload error.
+// This makes the JSON parser specific to the /api route, which is functionally acceptable
+// for this application and resolves type inference issues.
+app.use('/api', express.json(), apiRouter);
 
 // Add a root route for health checks
 app.get('/', (req, res) => {
