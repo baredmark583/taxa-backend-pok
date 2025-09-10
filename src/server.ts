@@ -29,10 +29,16 @@ const host = '0.0.0.0';
 app.use(cors());
 
 
-// FIX: To resolve a "No overload matches this call" error, the express.json() middleware
-// is applied directly to the /api route along with the API router. This can help
-// TypeScript correctly infer the types for the app.use method overload.
-app.use('/api', express.json(), apiRouter);
+// FIX: Resolved a "No overload matches this call" TypeScript error by separating
+// the `express.json()` middleware from the `apiRouter`. Applying `express.json()`
+// globally is a common and robust pattern in Express applications.
+app.use(express.json());
+app.use('/api', apiRouter);
+
+// Add a root route for health checks
+app.get('/', (req, res) => {
+  res.status(200).send('Server is healthy');
+});
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
