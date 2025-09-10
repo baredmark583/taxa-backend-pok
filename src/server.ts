@@ -32,12 +32,9 @@ const host = '0.0.0.0';
 // resolves issues where the ADMIN_APP_URL environment variable might not match.
 app.use(cors());
 
-
-// FIX: Unwrapped `express.json()` from an array. The previous wrapping was an incorrect attempt to solve a type overload error.
-app.use(express.json());
-
-// FIX: Unwrapped `apiRouter` from an array to resolve the "No overload matches this call" error. Routers should be passed directly to `app.use`.
-app.use('/api', apiRouter);
+// FIX: To resolve a TypeScript overload error on `app.use`, the `express.json()`
+// middleware is now applied directly to the `/api` route along with the apiRouter.
+app.use('/api', express.json(), apiRouter);
 
 // Add a root route for health checks
 app.get('/', (req, res) => {
