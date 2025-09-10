@@ -17,8 +17,11 @@ initializeDatabase().catch(err => {
     (process as any).exit(1);
 });
 
-// FIX: Explicitly type `app` to resolve type inference issues with `app.use`.
-const app: express.Application = express();
+// FIX: Removed explicit `express.Application` type and let TypeScript infer it.
+// This resolves overload errors on `app.use` and `http.createServer` that were
+// likely caused by a type definition conflict. The explicit type was a workaround
+// for a previous issue that appears to be resolved elsewhere.
+const app = express();
 const port = process.env.PORT || 3000;
 // FIX: Bind to 0.0.0.0 to make the server accessible within containerized environments.
 const host = '0.0.0.0';
