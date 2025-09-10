@@ -18,7 +18,8 @@ class PokerGame {
     private smallBlind: number;
     private bigBlind: number;
     private handInProgress: boolean = false;
-    private newHandTimeout: NodeJS.Timeout | null = null;
+    // FIX: Replace NodeJS.Timeout with ReturnType<typeof setTimeout> to resolve issue with missing global NodeJS type.
+    private newHandTimeout: ReturnType<typeof setTimeout> | null = null;
 
     constructor(onStateChange: () => void) {
         this.onStateChange = onStateChange;

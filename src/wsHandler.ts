@@ -78,7 +78,11 @@ export const setupWebSocket = (wss: WebSocketServer) => {
                         // FIX: Correctly call createPokerGame with one argument.
                         createPokerGame(() => broadcastGameState(roomId));
                         // FIX: Configure the table after creating the game instance.
-                        gameInstance?.configureTable(payload.blinds.small, payload.blinds.big);
+                        // A re-check is needed here to help TypeScript's control flow analysis
+                        // understand that the global gameInstance has been initialized.
+                        if (gameInstance) {
+                           gameInstance.configureTable(payload.blinds.small, payload.blinds.big);
+                        }
                     }
                     
                     // FIX: Pass the initialStack to the addPlayer method.
