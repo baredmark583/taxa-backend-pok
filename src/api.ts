@@ -5,11 +5,12 @@ import { pool } from './db';
 import { Rank, Suit } from './types';
 import { defaultIcons } from './db';
 
-// FIX: Use named import for Router to resolve a type inference error in server.ts.
-// FIX: Added explicit Router type to aid TypeScript's type inference.
-export const apiRouter: Router = Router();
+// FIX: To resolve overload errors similar to those in server.ts, the explicit
+// Router type has been removed to allow TypeScript to infer it. This addresses
+// a type definition conflict causing issues with middleware.
+export const apiRouter = Router();
 
-// FIX: The JSON parsing middleware was moved back here from server.ts to resolve a TypeScript error.
+// The JSON parsing middleware is applied here.
 apiRouter.use(express.json());
 
 // Get all users
