@@ -1,10 +1,3 @@
-
-
-
-
-
-
-
 import dotenv from 'dotenv';
 dotenv.config(); // Load environment variables from .env file
 
@@ -41,9 +34,10 @@ app.use(cors());
 
 
 // FIX: Moved express.json() middleware back from api.ts to fix overload error.
-app.use(express.json());
+// FIX: Wrapped express.json() in an array to resolve a TypeScript type overload error.
+app.use([express.json()]);
 
-// FIX: Re-wrapped apiRouter in an array to resolve a type overload error. While using the router directly is standard, this approach helps TypeScript correctly infer the middleware signature in this project's specific configuration.
+// FIX: Wrapped apiRouter in an array to resolve a type overload error.
 app.use('/api', [apiRouter]);
 
 // Add a root route for health checks

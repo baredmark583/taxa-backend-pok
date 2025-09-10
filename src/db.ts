@@ -34,10 +34,15 @@ export const defaultIcons = {
 };
 
 const defaultSlotSymbols = [
-    { name: 'SEVEN', imageUrl: 'https://www.svgrepo.com/show/19161/seven.svg', payout: 100, weight: 1 },
-    { name: 'BAR', imageUrl: 'https://www.svgrepo.com/show/210397/maps-and-flags-casino.svg', payout: 50, weight: 2 },
-    { name: 'BELL', imageUrl: 'https://www.svgrepo.com/show/19163/bell.svg', payout: 20, weight: 3 },
-    { name: 'CHERRY', imageUrl: 'https://www.svgrepo.com/show/198816/slot-machine-casino.svg', payout: 10, weight: 4 },
+    // High-value, low-weight (rare)
+    { name: 'SEVEN', imageUrl: 'https://www.svgrepo.com/show/477510/lucky-seven.svg', payout: 100, weight: 1 },
+    { name: 'BAR', imageUrl: 'https://www.svgrepo.com/show/210390/slot-machine.svg', payout: 40, weight: 5 },
+    { name: 'BELL', imageUrl: 'https://www.svgrepo.com/show/210421/gambler-casino.svg', payout: 15, weight: 10 },
+    { name: 'CHERRY', imageUrl: 'https://www.svgrepo.com/show/198816/slot-machine-casino.svg', payout: 10, weight: 20 },
+    // Low-value, high-weight (common "filler" symbols)
+    { name: 'ORANGE', imageUrl: 'https://www.svgrepo.com/show/483427/orange.svg', payout: 5, weight: 50 },
+    { name: 'LEMON', imageUrl: 'https://www.svgrepo.com/show/483431/lemon.svg', payout: 3, weight: 60 },
+    { name: 'GRAPE', imageUrl: 'https://www.svgrepo.com/show/483419/grapes.svg', payout: 2, weight: 70 },
 ];
 
 const generateDefaultCardFaces = () => {
@@ -83,6 +88,9 @@ export const initializeDatabase = async () => {
                 "role" TEXT NOT NULL DEFAULT 'PLAYER'
             );
         `);
+        // Add photoUrl column if it doesn't exist
+        await client.query(`ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS "photoUrl" TEXT;`);
+        
         const ADMIN_USER_ID = '7327258482';
         await client.query(`UPDATE "Users" SET "role" = 'ADMIN' WHERE "id" = $1;`, [ADMIN_USER_ID]);
 

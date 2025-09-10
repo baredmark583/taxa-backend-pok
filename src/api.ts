@@ -1,8 +1,3 @@
-
-
-
-
-
 import express from 'express';
 import { pool } from './db';
 import { Rank, Suit } from './types';
@@ -215,10 +210,15 @@ apiRouter.post('/assets/reset', async (req, res) => {
     const suitNameMap = { HEARTS: 'hearts', DIAMONDS: 'diamonds', CLUBS: 'clubs', SPADES: 'spades' };
     const rankNameMap = { 'A': 'ace', 'K': 'king', 'Q': 'queen', 'J': 'jack', 'T': '10', '9': '9', '8': '8', '7': '7', '6': '6', '5': '5', '4': '4', '3': '3', '2': '2' };
     const defaultSlotSymbols = [
-        { name: 'SEVEN', imageUrl: 'https://www.svgrepo.com/show/19161/seven.svg', payout: 100, weight: 1 },
-        { name: 'BAR', imageUrl: 'https://www.svgrepo.com/show/210397/maps-and-flags-casino.svg', payout: 50, weight: 2 },
-        { name: 'BELL', imageUrl: 'https://www.svgrepo.com/show/19163/bell.svg', payout: 20, weight: 3 },
-        { name: 'CHERRY', imageUrl: 'https://www.svgrepo.com/show/198816/slot-machine-casino.svg', payout: 10, weight: 4 },
+        // High-value, low-weight (rare)
+        { name: 'SEVEN', imageUrl: 'https://www.svgrepo.com/show/477510/lucky-seven.svg', payout: 100, weight: 1 },
+        { name: 'BAR', imageUrl: 'https://www.svgrepo.com/show/210390/slot-machine.svg', payout: 40, weight: 5 },
+        { name: 'BELL', imageUrl: 'https://www.svgrepo.com/show/210421/gambler-casino.svg', payout: 15, weight: 10 },
+        { name: 'CHERRY', imageUrl: 'https://www.svgrepo.com/show/198816/slot-machine-casino.svg', payout: 10, weight: 20 },
+        // Low-value, high-weight (common "filler" symbols)
+        { name: 'ORANGE', imageUrl: 'https://www.svgrepo.com/show/483427/orange.svg', payout: 5, weight: 50 },
+        { name: 'LEMON', imageUrl: 'https://www.svgrepo.com/show/483431/lemon.svg', payout: 3, weight: 60 },
+        { name: 'GRAPE', imageUrl: 'https://www.svgrepo.com/show/483419/grapes.svg', payout: 2, weight: 70 },
     ];
     
     const client = await pool.connect();

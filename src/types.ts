@@ -1,4 +1,5 @@
 
+
 export enum Suit {
   HEARTS = 'HEARTS',
   DIAMONDS = 'DIAMONDS',
@@ -37,6 +38,7 @@ export interface Player {
     isAllIn: boolean;
     isActive: boolean; // Is it their turn?
     hasActed: boolean; // Has acted in the current betting round
+    photoUrl?: string;
 }
 
 export enum GameStage {

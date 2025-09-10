@@ -1,4 +1,5 @@
 
+
 import { pool } from './db';
 import { Rank, Suit, Card, Player, GameStage, GameState, WinnerInfo } from './types';
 
@@ -59,17 +60,18 @@ class PokerGame {
         this.shuffleDeck();
     }
 
-    async addPlayer(user: { id: string, first_name: string }, stack: number) {
+    async addPlayer(user: { id: string, first_name: string, photo_url?: string }, stack: number) {
         if (this.state.players.find(p => p.id === user.id.toString())) return;
 
         const player: Player = {
             id: user.id.toString(), name: user.first_name, stack, bet: 0,
-            hand: [], isFolded: false, isAllIn: false, isActive: false, hasActed: false
+            hand: [], isFolded: false, isAllIn: false, isActive: false, hasActed: false,
+            photoUrl: user.photo_url
         };
         this.state.players.push(player);
 
         try {
-            await pool.query('INSERT INTO "Users" (id, name, "playMoney") VALUES ($1, $2, $3) ON CONFLICT (id) DO UPDATE SET name = $2', [player.id, player.name, stack]);
+            await pool.query('INSERT INTO "Users" (id, name, "playMoney", "photoUrl") VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO UPDATE SET name = $2, "photoUrl" = $4', [player.id, player.name, stack, player.photoUrl]);
         } catch (error) { console.error("Failed to add user to DB:", error); }
         
         if (this.state.players.length >= 2 && !this.handInProgress) {
