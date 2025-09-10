@@ -33,8 +33,10 @@ const host = '0.0.0.0';
 app.use(cors());
 
 // FIX: To resolve a TypeScript overload error on `app.use`, the `express.json()`
-// middleware is now applied directly to the `/api` route along with the apiRouter.
-app.use('/api', express.json(), apiRouter);
+// middleware is now applied directly to the `/api` route.
+// FIX: Split `app.use` into separate calls to resolve a TypeScript overload error with middleware signatures.
+app.use('/api', express.json());
+app.use('/api', apiRouter);
 
 // Add a root route for health checks
 app.get('/', (req, res) => {
