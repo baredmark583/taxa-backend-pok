@@ -370,8 +370,9 @@ class PokerGame {
 
 export let gameInstance: PokerGame | null = null;
 
-export const createPokerGame = (onStateChange: () => void) => {
+export const createPokerGame = (onStateChange: () => void): PokerGame => {
     if (!gameInstance) {
         gameInstance = new PokerGame(onStateChange);
     }
+    return gameInstance;
 };
