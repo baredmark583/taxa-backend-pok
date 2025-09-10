@@ -1,4 +1,3 @@
-
 import dotenv from 'dotenv';
 dotenv.config(); // Load environment variables from .env file
 
@@ -20,6 +19,8 @@ initializeDatabase().catch(err => {
 
 const app = express();
 const port = process.env.PORT || 3000;
+// FIX: Bind to 0.0.0.0 to make the server accessible within containerized environments.
+const host = '0.0.0.0';
 
 // Middleware
 // The original CORS setup was too strict for flexible deployment environments.
@@ -38,6 +39,7 @@ const wss = new WebSocketServer({ server });
 
 setupWebSocket(wss);
 
-server.listen(port, () => {
-    console.log(`Server is running on http://localhost:${port}`);
+server.listen(Number(port), host, () => {
+    // FIX: Updated log message to reflect the correct host and port.
+    console.log(`Server is running on http://${host}:${port}`);
 });
