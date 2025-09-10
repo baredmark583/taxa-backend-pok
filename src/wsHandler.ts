@@ -25,7 +25,8 @@ function validateInitData(initData: string, botToken: string): { isValid: boolea
         
         const dataCheckString = dataCheckArr.join('\n');
         
-        const secretKey = crypto.createHmac('sha266', 'WebAppData').update(botToken).digest();
+        // FIX: Corrected the HMAC algorithm from 'sha266' to the valid 'sha256'.
+        const secretKey = crypto.createHmac('sha256', 'WebAppData').update(botToken).digest();
         const calculatedHash = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
 
         if (calculatedHash === hash) {

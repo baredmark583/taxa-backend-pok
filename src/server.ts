@@ -17,7 +17,8 @@ initializeDatabase().catch(err => {
     (process as any).exit(1);
 });
 
-const app = express();
+// FIX: Explicitly type `app` to resolve type inference issues with `app.use`.
+const app: express.Application = express();
 const port = process.env.PORT || 3000;
 // FIX: Bind to 0.0.0.0 to make the server accessible within containerized environments.
 const host = '0.0.0.0';
