@@ -1,4 +1,5 @@
 
+
 import express, { Router } from 'express';
 import { pool } from './db';
 import { Rank, Suit } from './types';
@@ -8,7 +9,8 @@ import { defaultIcons } from './db';
 // FIX: Added explicit Router type to aid TypeScript's type inference.
 export const apiRouter: Router = Router();
 
-// FIX: The JSON parsing middleware was moved to server.ts to resolve a TypeScript error.
+// FIX: The JSON parsing middleware was moved back here from server.ts to resolve a TypeScript error.
+apiRouter.use(express.json());
 
 // Get all users
 // FIX: Removed /api prefix. It is now handled in server.ts

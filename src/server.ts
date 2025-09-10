@@ -1,3 +1,4 @@
+
 import dotenv from 'dotenv';
 dotenv.config(); // Load environment variables from .env file
 
@@ -33,10 +34,8 @@ const host = '0.0.0.0';
 app.use(cors());
 
 
-// FIX: Resolved a "No overload matches this call" TypeScript error by separating
-// the `express.json()` middleware from the `apiRouter`. Applying `express.json()`
-// globally is a common and robust pattern in Express applications.
-app.use(express.json());
+// FIX: To resolve a "No overload matches this call" TypeScript error, the `express.json()`
+// middleware has been moved to `api.ts` to be applied directly to the API router.
 app.use('/api', apiRouter);
 
 // Add a root route for health checks
