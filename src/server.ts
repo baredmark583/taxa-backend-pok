@@ -33,12 +33,11 @@ const host = '0.0.0.0';
 app.use(cors());
 
 
-// FIX: Moved express.json() middleware back from api.ts to fix overload error.
-// FIX: Wrapped express.json() in an array to resolve a TypeScript type overload error.
-app.use([express.json()]);
+// FIX: Unwrapped `express.json()` from an array. The previous wrapping was an incorrect attempt to solve a type overload error.
+app.use(express.json());
 
-// FIX: Wrapped apiRouter in an array to resolve a type overload error.
-app.use('/api', [apiRouter]);
+// FIX: Unwrapped `apiRouter` from an array to resolve the "No overload matches this call" error. Routers should be passed directly to `app.use`.
+app.use('/api', apiRouter);
 
 // Add a root route for health checks
 app.get('/', (req, res) => {
