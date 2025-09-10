@@ -30,6 +30,7 @@ export const defaultIcons = {
     iconFold: 'https://api.iconify.design/mdi/hand-back-right-off-outline.svg',
     iconCall: 'https://api.iconify.design/mdi/check.svg',
     iconRaise: 'https://api.iconify.design/mdi/arrow-up-bold.svg',
+    iconBank: 'https://api.iconify.design/solar/wallet-money-bold-duotone.svg',
 };
 
 const defaultSlotSymbols = [

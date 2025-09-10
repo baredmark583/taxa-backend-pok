@@ -1,6 +1,8 @@
 
 
 
+
+
 import express from 'express';
 import { pool } from './db';
 import { Rank, Suit } from './types';
@@ -11,9 +13,6 @@ import { defaultIcons } from './db';
 // a type definition conflict causing issues with middleware.
 // FIX: Changed to express.Router() to ensure correct type inference and resolve middleware type conflicts.
 export const apiRouter = express.Router();
-
-// The JSON parsing middleware is applied here.
-apiRouter.use(express.json());
 
 // Get all users
 // FIX: Removed /api prefix. It is now handled in server.ts
