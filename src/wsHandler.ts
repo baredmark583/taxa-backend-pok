@@ -25,7 +25,7 @@ function validateInitData(initData: string, botToken: string): { isValid: boolea
         
         const dataCheckString = dataCheckArr.join('\n');
         
-        const secretKey = crypto.createHmac('sha256', 'WebAppData').update(botToken).digest();
+        const secretKey = crypto.createHmac('sha266', 'WebAppData').update(botToken).digest();
         const calculatedHash = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
 
         if (calculatedHash === hash) {
@@ -75,10 +75,14 @@ export const setupWebSocket = (wss: WebSocketServer) => {
                     gameRooms.get(roomId)?.add(ws);
 
                     if (!gameInstance) {
-                         createPokerGame(payload.numPlayers, payload.blinds.small, payload.blinds.big, payload.initialStack, () => broadcastGameState(roomId));
+                        // FIX: Correctly call createPokerGame with one argument.
+                        createPokerGame(() => broadcastGameState(roomId));
+                        // FIX: Configure the table after creating the game instance.
+                        gameInstance?.configureTable(payload.blinds.small, payload.blinds.big);
                     }
                     
-                    await gameInstance?.addPlayer(user);
+                    // FIX: Pass the initialStack to the addPlayer method.
+                    await gameInstance?.addPlayer(user, payload.initialStack);
 
                     console.log(`Player ${user.id} (${user.first_name}) joined room ${roomId}`);
                 } else if (type === 'playerAction') {

@@ -5,7 +5,8 @@ import { Rank, Suit } from './types';
 import { defaultIcons } from './db';
 
 // FIX: Use named import for Router to resolve a type inference error in server.ts.
-export const apiRouter = Router();
+// FIX: Added explicit Router type to aid TypeScript's type inference.
+export const apiRouter: Router = Router();
 
 // FIX: The JSON parsing middleware was moved to server.ts to resolve a TypeScript error.
 
@@ -152,8 +153,10 @@ apiRouter.post('/assets', async (req, res) => {
 
         // 2. Update card faces (clear and re-insert)
         await client.query('TRUNCATE TABLE "CardAssets"');
-        for (const suit of Object.values(Suit)) {
-            for (const rank of Object.values(Rank)) {
+        // FIX: Cast Object.values to specific enum arrays to ensure type safety for indexing.
+        for (const suit of Object.values(Suit) as Suit[]) {
+            // FIX: Cast Object.values to specific enum arrays to ensure type safety for indexing.
+            for (const rank of Object.values(Rank) as Rank[]) {
                 const imageUrl = cardFaces[suit]?.[rank];
                 if (imageUrl) {
                      await client.query(

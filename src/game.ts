@@ -1,547 +1,376 @@
-import { GameState, Player, Card, Suit, Rank, GamePhase, PlayerAction, HandResult, AdminUser, TelegramUser } from './types';
+
 import { pool } from './db';
+import { Rank, Suit, Card, Player, GameStage, GameState, WinnerInfo } from './types';
 
-// --- Card & Deck Logic ---
-const SUITS: Suit[] = [Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS, Suit.SPADES];
-const RANKS: Rank[] = [Rank.TWO, Rank.THREE, Rank.FOUR, Rank.FIVE, Rank.SIX, Rank.SEVEN, Rank.EIGHT, Rank.NINE, Rank.TEN, Rank.JACK, Rank.QUEEN, Rank.KING, Rank.ACE];
-const RANK_VALUES: Record<Rank, number> = { [Rank.TWO]: 2, [Rank.THREE]: 3, [Rank.FOUR]: 4, [Rank.FIVE]: 5, [Rank.SIX]: 6, [Rank.SEVEN]: 7, [Rank.EIGHT]: 8, [Rank.NINE]: 9, [Rank.TEN]: 10, [Rank.JACK]: 11, [Rank.QUEEN]: 12, [Rank.KING]: 13, [Rank.ACE]: 14 };
+const rankToValue: Record<Rank, number> = { [Rank.TWO]: 2, [Rank.THREE]: 3, [Rank.FOUR]: 4, [Rank.FIVE]: 5, [Rank.SIX]: 6, [Rank.SEVEN]: 7, [Rank.EIGHT]: 8, [Rank.NINE]: 9, [Rank.TEN]: 10, [Rank.JACK]: 11, [Rank.QUEEN]: 12, [Rank.KING]: 13, [Rank.ACE]: 14 };
 
-const createDeck = (): Card[] => SUITS.flatMap(suit => RANKS.map(rank => ({ suit, rank })));
-
-const shuffleDeck = (deck: Card[]): Card[] => {
-  for (let i = deck.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [deck[i], deck[j]] = [deck[j], deck[i]];
-  }
-  return deck;
+type HandResult = {
+    rank: number; // 9 for SF, 8 for Quads, etc.
+    name: string;
+    value: number; // High card value for tie-breaking
+    cards: Card[]; // The 5 cards making the hand
 };
-
-// --- Hand Evaluation Logic ---
-const HAND_RANKS = {
-    HIGH_CARD: 0, PAIR: 1, TWO_PAIR: 2, THREE_OF_A_KIND: 3, STRAIGHT: 4,
-    FLUSH: 5, FULL_HOUSE: 6, FOUR_OF_A_KIND: 7, STRAIGHT_FLUSH: 8, ROYAL_FLUSH: 9,
-};
-
-const HAND_NAMES_RU = {
-    [HAND_RANKS.ROYAL_FLUSH]: 'Роял-флеш',
-    [HAND_RANKS.STRAIGHT_FLUSH]: 'Стрит-флеш',
-    [HAND_RANKS.FOUR_OF_A_KIND]: 'Каре',
-    [HAND_RANKS.FULL_HOUSE]: 'Фулл-хаус',
-    [HAND_RANKS.FLUSH]: 'Флеш',
-    [HAND_RANKS.STRAIGHT]: 'Стрит',
-    [HAND_RANKS.THREE_OF_A_KIND]: 'Тройка',
-    [HAND_RANKS.TWO_PAIR]: 'Две пары',
-    [HAND_RANKS.PAIR]: 'Пара',
-    [HAND_RANKS.HIGH_CARD]: 'Старшая карта',
-};
-
-
-const evaluateTwoCardHand = (cards: [Card, Card]): HandResult => {
-    const sortedHand = [...cards].sort((a, b) => RANK_VALUES[b.rank] - RANK_VALUES[a.rank]);
-    const ranks = sortedHand.map(c => RANK_VALUES[c.rank]);
-    if (sortedHand[0].rank === sortedHand[1].rank) {
-        return {
-            name: HAND_NAMES_RU[HAND_RANKS.PAIR],
-            rank: HAND_RANKS.PAIR,
-            cards: sortedHand,
-            rankValues: [HAND_RANKS.PAIR, ranks[0], ranks[1]]
-        };
-    }
-    return {
-        name: HAND_NAMES_RU[HAND_RANKS.HIGH_CARD],
-        rank: HAND_RANKS.HIGH_CARD,
-        cards: sortedHand,
-        rankValues: [HAND_RANKS.HIGH_CARD, ...ranks]
-    };
-};
-
-const evaluateHand = (allCards: Card[]): HandResult => {
-    if (allCards.length < 2) return { name: '', rank: -1, cards: [] };
-    if (allCards.length === 2) return evaluateTwoCardHand(allCards as [Card, Card]);
-
-    let bestHand: HandResult = { name: 'Старшая карта', rank: -1, cards: [], rankValues: [] };
-    
-    // This logic requires at least 5 cards to form a hand.
-    if (allCards.length < 5) {
-        // Not enough cards to evaluate a standard poker hand, return a default based on highest cards.
-        const sorted = [...allCards].sort((a,b) => RANK_VALUES[b.rank] - RANK_VALUES[a.rank]);
-        return { ...evaluateTwoCardHand([sorted[0], sorted[1]]), cards: sorted };
-    }
-
-    // Generate all 5-card combinations from the available cards
-    const combinations = (arr: Card[], k: number): Card[][] => {
-        if (k > arr.length || k <= 0) {
-            return [];
-        }
-        if (k === arr.length) {
-            return [arr];
-        }
-        if (k === 1) {
-            return arr.map(item => [item]);
-        }
-        const combs: Card[][] = [];
-        arr.forEach((item, index) => {
-            const smallerCombs = combinations(arr.slice(index + 1), k - 1);
-            smallerCombs.forEach(smallerComb => {
-                combs.push([item].concat(smallerComb));
-            });
-        });
-        return combs;
-    };
-    
-    const fiveCardHands = combinations(allCards, 5);
-
-    for (const hand of fiveCardHands) {
-        const sortedHand = [...hand].sort((a, b) => RANK_VALUES[b.rank] - RANK_VALUES[a.rank]);
-        const currentHandResult = get5CardHandResult(sortedHand);
-        if (compareHandResults(currentHandResult, bestHand) > 0) {
-            bestHand = currentHandResult;
-        }
-    }
-
-    return bestHand;
-};
-
-const get5CardHandResult = (hand: Card[]): HandResult => {
-    const ranks = hand.map(c => RANK_VALUES[c.rank]);
-    const suits = hand.map(c => c.suit);
-    const uniqueRanks = [...new Set(ranks)];
-    
-    const isFlush = new Set(suits).size === 1;
-    const rankSet = new Set(ranks);
-    const isStraight = rankSet.size === 5 && (Math.max(...ranks) - Math.min(...ranks) === 4 ||
-                       (JSON.stringify(uniqueRanks.sort((a,b)=>a-b)) === JSON.stringify([2,3,4,5,14]))); // Ace-low straight
-
-    if (isStraight && isFlush) {
-        if (Math.min(...ranks) === 10 && Math.max(...ranks) === 14) {
-            return { name: HAND_NAMES_RU[HAND_RANKS.ROYAL_FLUSH], rank: HAND_RANKS.ROYAL_FLUSH, cards: hand, rankValues: [HAND_RANKS.ROYAL_FLUSH] };
-        }
-        const highCard = ranks.includes(14) && ranks.includes(5) ? 5 : Math.max(...ranks); // Handle A-5 straight
-        return { name: HAND_NAMES_RU[HAND_RANKS.STRAIGHT_FLUSH], rank: HAND_RANKS.STRAIGHT_FLUSH, cards: hand, rankValues: [HAND_RANKS.STRAIGHT_FLUSH, highCard] };
-    }
-
-    const rankCounts = ranks.reduce((acc, rank) => { acc[rank] = (acc[rank] || 0) + 1; return acc; }, {} as Record<number, number>);
-    const counts = Object.values(rankCounts).sort((a, b) => b - a);
-    const rankKeys = Object.keys(rankCounts).map(Number).sort((a, b) => rankCounts[b] - rankCounts[a] || b - a);
-
-    if (counts[0] === 4) {
-        return { name: HAND_NAMES_RU[HAND_RANKS.FOUR_OF_A_KIND], rank: HAND_RANKS.FOUR_OF_A_KIND, cards: hand, rankValues: [HAND_RANKS.FOUR_OF_A_KIND, rankKeys[0], rankKeys[1]] };
-    }
-    if (counts[0] === 3 && counts[1] === 2) {
-        return { name: HAND_NAMES_RU[HAND_RANKS.FULL_HOUSE], rank: HAND_RANKS.FULL_HOUSE, cards: hand, rankValues: [HAND_RANKS.FULL_HOUSE, rankKeys[0], rankKeys[1]] };
-    }
-    if (isFlush) {
-        return { name: HAND_NAMES_RU[HAND_RANKS.FLUSH], rank: HAND_RANKS.FLUSH, cards: hand, rankValues: [HAND_RANKS.FLUSH, ...ranks] };
-    }
-    if (isStraight) {
-        const highCard = ranks.includes(14) && ranks.includes(5) ? 5 : Math.max(...ranks);
-        return { name: HAND_NAMES_RU[HAND_RANKS.STRAIGHT], rank: HAND_RANKS.STRAIGHT, cards: hand, rankValues: [HAND_RANKS.STRAIGHT, highCard] };
-    }
-    if (counts[0] === 3) {
-        return { name: HAND_NAMES_RU[HAND_RANKS.THREE_OF_A_KIND], rank: HAND_RANKS.THREE_OF_A_KIND, cards: hand, rankValues: [HAND_RANKS.THREE_OF_A_KIND, rankKeys[0], ...rankKeys.slice(1)] };
-    }
-    if (counts[0] === 2 && counts[1] === 2) {
-        return { name: HAND_NAMES_RU[HAND_RANKS.TWO_PAIR], rank: HAND_RANKS.TWO_PAIR, cards: hand, rankValues: [HAND_RANKS.TWO_PAIR, rankKeys[0], rankKeys[1], rankKeys[2]] };
-    }
-    if (counts[0] === 2) {
-        return { name: HAND_NAMES_RU[HAND_RANKS.PAIR], rank: HAND_RANKS.PAIR, cards: hand, rankValues: [HAND_RANKS.PAIR, rankKeys[0], ...rankKeys.slice(1)] };
-    }
-    return { name: HAND_NAMES_RU[HAND_RANKS.HIGH_CARD], rank: HAND_RANKS.HIGH_CARD, cards: hand, rankValues: [HAND_RANKS.HIGH_CARD, ...ranks] };
-};
-
-const compareHandResults = (a: HandResult, b: HandResult): number => {
-    if (!a.rankValues) return -1;
-    if (!b.rankValues) return 1;
-    for (let i = 0; i < Math.max(a.rankValues.length, b.rankValues.length); i++) {
-        const valA = a.rankValues[i] || 0;
-        const valB = b.rankValues[i] || 0;
-        if (valA > valB) return 1;
-        if (valA < valB) return -1;
-    }
-    return 0; // Tie
-};
-
-// --- Game Class ---
 
 class PokerGame {
     private state: GameState;
-    private broadcastCallback: () => void;
-    private deck: Card[] = [];
-    private playerSeats: (Player | null)[];
-    private maxPlayers: number;
+    private onStateChange: () => void;
+    private deck: Card[];
+    private smallBlind: number;
+    private bigBlind: number;
+    private handInProgress: boolean = false;
+    private newHandTimeout: NodeJS.Timeout | null = null;
 
-    constructor(numPlayers: number, smallBlind: number, bigBlind: number, initialStack: number, broadcastCallback: () => void) {
-        this.maxPlayers = numPlayers;
-        this.playerSeats = Array(numPlayers).fill(null);
+    constructor(onStateChange: () => void) {
+        this.onStateChange = onStateChange;
         this.state = {
             players: [],
             communityCards: [],
             pot: 0,
+            currentBet: 0,
             activePlayerIndex: -1,
-            gamePhase: GamePhase.PRE_DEAL,
-            smallBlind,
-            bigBlind,
-            currentBet: bigBlind,
-            lastRaiserIndex: null,
-            log: ["Waiting for players..."],
+            stage: GameStage.PRE_DEAL,
+            dealerIndex: -1,
         };
-        this.broadcastCallback = broadcastCallback;
-        this.broadcastState();
-    }
-
-    private broadcastState() {
-        this.broadcastCallback();
+        this.deck = [];
+        this.smallBlind = 0;
+        this.bigBlind = 0;
     }
     
-    public getState(): GameState {
-        // Return a copy of the state
-        return JSON.parse(JSON.stringify(this.state));
+    public configureTable(smallBlind: number, bigBlind: number) {
+        this.smallBlind = smallBlind;
+        this.bigBlind = bigBlind;
+    }
+
+    private shuffleDeck() {
+        for (let i = this.deck.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [this.deck[i], this.deck[j]] = [this.deck[j], this.deck[i]];
+        }
     }
     
-    public async addPlayer(telegramUser: TelegramUser) {
-        const userId = telegramUser.id.toString();
-        
-        // Prevent duplicate players
-        if (this.state.players.some(p => p.id === userId)) {
-            console.log(`Player ${userId} is already at the table.`);
-            this.broadcastState(); // Broadcast state to the re-connecting user
-            return;
+    private initializeDeck() {
+        this.deck = [];
+        for (const suit of Object.values(Suit)) {
+            for (const rank of Object.values(Rank)) {
+                this.deck.push({ suit, rank });
+            }
         }
+        this.shuffleDeck();
+    }
 
-        const emptySeatIndex = this.playerSeats.findIndex(p => p === null);
-        if (emptySeatIndex === -1) {
-            console.log('Table is full.');
-            return; // Or send a "table full" message
-        }
+    async addPlayer(user: { id: string, first_name: string }, stack: number) {
+        if (this.state.players.find(p => p.id === user.id.toString())) return;
+
+        const player: Player = {
+            id: user.id.toString(), name: user.first_name, stack, bet: 0,
+            hand: [], isFolded: false, isAllIn: false, isActive: false, hasActed: false
+        };
+        this.state.players.push(player);
 
         try {
-            const name = `${telegramUser.first_name} ${telegramUser.last_name || ''}`.trim();
-            const res = await pool.query(
-                `INSERT INTO "Users" (id, name, "playMoney", "realMoney")
-                 VALUES ($1, $2, 10000, 0)
-                 ON CONFLICT (id) DO UPDATE
-                 SET name = EXCLUDED.name
-                 RETURNING *`,
-                [userId, name]
-            );
-
-            const dbUser: AdminUser = {
-                ...res.rows[0],
-                 playMoney: parseFloat(res.rows[0].playMoney),
-                 realMoney: parseFloat(res.rows[0].realMoney),
-            };
-
-            const newPlayer: Player = {
-                id: dbUser.id,
-                name: dbUser.name,
-                stack: dbUser.playMoney, // Use play money for now
-                cards: [], bet: 0, isFolded: false, isAllIn: false,
-                isDealer: false, isSmallBlind: false, isBigBlind: false,
-                isThinking: false, position: emptySeatIndex,
-                avatarUrl: telegramUser.photo_url,
-            };
-
-            this.playerSeats[emptySeatIndex] = newPlayer;
-            this.state.players = this.playerSeats.filter(p => p !== null) as Player[];
-
-            if (this.state.players.length >= 2 && this.state.gamePhase === GamePhase.PRE_DEAL) {
-                this.state.log = ["Game is starting..."];
-                this.broadcastState();
-                setTimeout(() => this.startNewHand(), 2000);
-            } else {
-                 this.broadcastState();
-            }
-        } catch (error) {
-            console.error('Failed to add player to game:', error);
+            await pool.query('INSERT INTO "Users" (id, name, "playMoney") VALUES ($1, $2, $3) ON CONFLICT (id) DO UPDATE SET name = $2', [player.id, player.name, stack]);
+        } catch (error) { console.error("Failed to add user to DB:", error); }
+        
+        if (this.state.players.length >= 2 && !this.handInProgress) {
+            this.startNewHand();
         }
+        this.broadcast();
     }
 
-    public removePlayer(playerId: string) {
-        const playerIndex = this.state.players.findIndex(p => p.id === playerId);
-        if (playerIndex === -1) {
-            console.log(`Player ${playerId} not found for removal.`);
-            return;
-        }
-
-        const removedPlayer = this.state.players[playerIndex];
-        const seatIndex = this.playerSeats.findIndex(p => p?.id === playerId);
-        if (seatIndex > -1) {
-            this.playerSeats[seatIndex] = null;
-        }
-
-        this.state.players = this.state.players.filter(p => p.id !== playerId);
-        this.state.log.push(`${removedPlayer.name} has left the table.`);
-        console.log(`${removedPlayer.name} has left the table.`);
-
-        // Simple reset logic: if fewer than 2 players, stop the game.
-        if (this.state.players.length < 2 && this.state.gamePhase !== GamePhase.PRE_DEAL) {
-            this.state.gamePhase = GamePhase.PRE_DEAL;
-            this.state.activePlayerIndex = -1;
-            this.state.log.push("Waiting for more players...");
-        } else if (this.state.players.length >= 2) {
-             // If the active player was removed, find the next one.
-             if (this.state.activePlayerIndex === playerIndex) {
-                 this.findNextPlayer();
-             }
+    removePlayer(userId: string) {
+        const playerIndex = this.state.players.findIndex(p => p.id === userId);
+        if (playerIndex === -1) return;
+        
+        if (this.state.players[playerIndex].isActive) {
+           this.handlePlayerAction(userId, { type: 'fold' });
         }
         
-        this.broadcastState();
+        this.state.players.splice(playerIndex, 1);
+
+        if (this.state.players.length < 2 && this.handInProgress) {
+            this.endHandEarly();
+        } else if (this.state.dealerIndex >= this.state.players.length) {
+            this.state.dealerIndex = 0;
+        }
+
+        this.broadcast();
     }
 
+    private endHandEarly() {
+        this.handInProgress = false;
+        const remainingPlayer = this.state.players.find(p => !p.isFolded);
+        if (remainingPlayer) {
+            remainingPlayer.stack += this.state.pot;
+        }
+        this.state.pot = 0;
+        this.state.stage = GameStage.PRE_DEAL;
+        
+        if (this.newHandTimeout) clearTimeout(this.newHandTimeout);
+        this.newHandTimeout = setTimeout(() => this.startNewHand(), 5000);
+    }
 
     private startNewHand() {
         if (this.state.players.length < 2) return;
+        this.handInProgress = true;
+        
+        if (this.newHandTimeout) clearTimeout(this.newHandTimeout);
 
-        this.deck = shuffleDeck(createDeck());
+        this.initializeDeck();
         this.state.communityCards = [];
         this.state.pot = 0;
-        this.state.log = [];
-        this.state.gamePhase = GamePhase.PRE_FLOP;
+        this.state.winners = [];
+        this.state.dealerIndex = (this.state.dealerIndex + 1) % this.state.players.length;
 
-        // Rotate dealer, blinds
-        const dealerIndex = this.state.players.findIndex(p => p.isDealer);
         this.state.players.forEach(p => {
-            p.isDealer = false;
-            p.isSmallBlind = false;
-            p.isBigBlind = false;
-            p.cards = [this.deck.pop()!, this.deck.pop()!];
+            p.hand = [this.deck.pop()!, this.deck.pop()!];
             p.bet = 0;
             p.isFolded = false;
-            p.isThinking = false;
-            p.lastActionDisplay = undefined;
-            p.handResult = evaluateTwoCardHand(p.cards as [Card, Card]);
+            p.isAllIn = false;
+            p.isActive = false;
+            p.hasActed = false;
         });
 
-        const newDealerIndex = (dealerIndex + 1) % this.state.players.length;
-        const sbIndex = (newDealerIndex + 1) % this.state.players.length;
-        const bbIndex = (newDealerIndex + 2) % this.state.players.length;
+        // FIX: Correctly access dealerIndex from the state object.
+        const sbIndex = (this.state.dealerIndex + 1) % this.state.players.length;
+        // FIX: Correctly access dealerIndex from the state object.
+        const bbIndex = (this.state.dealerIndex + 2) % this.state.players.length;
 
-        this.state.players[newDealerIndex].isDealer = true;
-        
-        // Post blinds
         const sbPlayer = this.state.players[sbIndex];
-        sbPlayer.isSmallBlind = true;
-        sbPlayer.stack -= this.state.smallBlind;
-        sbPlayer.bet = this.state.smallBlind;
-
+        const sbAmount = Math.min(this.smallBlind, sbPlayer.stack);
+        sbPlayer.stack -= sbAmount;
+        sbPlayer.bet = sbAmount;
+        
         const bbPlayer = this.state.players[bbIndex];
-        bbPlayer.isBigBlind = true;
-        bbPlayer.stack -= this.state.bigBlind;
-        bbPlayer.bet = this.state.bigBlind;
+        const bbAmount = Math.min(this.bigBlind, bbPlayer.stack);
+        bbPlayer.stack -= bbAmount;
+        bbPlayer.bet = bbAmount;
 
-        this.state.pot = this.state.smallBlind + this.state.bigBlind;
-        this.state.currentBet = this.state.bigBlind;
+        this.state.pot = sbAmount + bbAmount;
+        this.state.currentBet = this.bigBlind;
+        this.state.stage = GameStage.PRE_FLOP;
+        
         this.state.activePlayerIndex = (bbIndex + 1) % this.state.players.length;
-        this.state.players[this.state.activePlayerIndex].isThinking = true;
-        this.state.lastRaiserIndex = bbIndex;
+        this.state.players[this.state.activePlayerIndex].isActive = true;
 
-        this.broadcastState();
+        this.broadcast();
     }
-
-    public handlePlayerAction(playerId: string, action: PlayerAction) {
+    
+    handlePlayerAction(playerId: string, action: { type: string, amount?: number }) {
         const playerIndex = this.state.players.findIndex(p => p.id === playerId);
-        if (playerIndex !== this.state.activePlayerIndex) {
-            return; // Not this player's turn
-        }
+        if (playerIndex !== this.state.activePlayerIndex) return;
 
         const player = this.state.players[playerIndex];
-        player.isThinking = false;
-        
-        // simplified logic
-        switch(action.type) {
+        player.isActive = false;
+        player.hasActed = true;
+
+        switch (action.type) {
             case 'fold':
                 player.isFolded = true;
-                player.lastActionDisplay = 'Fold';
                 break;
             case 'check':
-                player.lastActionDisplay = 'Check';
+                // Valid only if player.bet === this.state.currentBet
                 break;
-            case 'call': 
-                 const toCall = this.state.currentBet - player.bet;
-                 player.stack -= toCall;
-                 player.bet += toCall;
-                 this.state.pot += toCall;
-                 player.lastActionDisplay = 'Call';
-                 break;
+            case 'call':
+                const callAmount = Math.min(this.state.currentBet - player.bet, player.stack);
+                player.stack -= callAmount;
+                player.bet += callAmount;
+                this.state.pot += callAmount;
+                if (player.stack === 0) player.isAllIn = true;
+                break;
             case 'raise':
-                 const raiseAmount = action.amount;
-                 const toRaise = raiseAmount - player.bet;
-                 player.stack -= toRaise;
-                 this.state.pot += toRaise;
-                 player.bet = raiseAmount;
-                 this.state.currentBet = raiseAmount;
-                 this.state.lastRaiserIndex = playerIndex;
-                 player.lastActionDisplay = `Raise to ${raiseAmount}`;
-                 break;
+                const raiseAmount = action.amount!;
+                const totalBet = raiseAmount;
+                const amountToPot = totalBet - player.bet;
+                
+                player.stack -= amountToPot;
+                player.bet = totalBet;
+                this.state.pot += amountToPot;
+                this.state.currentBet = totalBet;
+                if (player.stack === 0) player.isAllIn = true;
+                
+                // Other players need to act again
+                this.state.players.forEach((p, i) => {
+                    if (i !== playerIndex && !p.isFolded && !p.isAllIn) {
+                        p.hasActed = false;
+                    }
+                });
+                break;
         }
 
-        this.findNextPlayer();
-        this.broadcastState();
+        this.moveToNextPlayer();
     }
     
-    private findNextPlayer() {
-        let nextIndex = (this.state.activePlayerIndex + 1) % this.state.players.length;
+    private moveToNextPlayer() {
+        const activePlayersCount = this.state.players.filter(p => !p.isFolded).length;
+        if (activePlayersCount <= 1) {
+            this.endBettingRound();
+            return;
+        }
         
-        // Skip folded or all-in players
-        while(this.state.players[nextIndex].isFolded || this.state.players[nextIndex].isAllIn) {
+        const roundOver = this.state.players.every(p => p.isFolded || p.isAllIn || (p.hasActed && p.bet === this.state.currentBet));
+        if (roundOver) {
+            this.endBettingRound();
+            return;
+        }
+        
+        let nextIndex = (this.state.activePlayerIndex + 1) % this.state.players.length;
+        while (this.state.players[nextIndex].isFolded || this.state.players[nextIndex].isAllIn) {
             nextIndex = (nextIndex + 1) % this.state.players.length;
-            if (nextIndex === this.state.activePlayerIndex) { // Everyone else is folded/all-in
-                this.state.activePlayerIndex = -1;
-                setTimeout(() => this.progressToNextPhase(), 1000);
-                return;
-            }
         }
-
-        // Simplified end-of-round logic
-        if (nextIndex === this.state.lastRaiserIndex) {
-            this.state.activePlayerIndex = -1; // End of betting round
-            setTimeout(() => this.progressToNextPhase(), 1000);
-        } else {
-            this.state.activePlayerIndex = nextIndex;
-            this.state.players[nextIndex].isThinking = true;
-        }
+        this.state.activePlayerIndex = nextIndex;
+        this.state.players[nextIndex].isActive = true;
+        
+        this.broadcast();
     }
-
-    private updateAllPlayerHands() {
-        this.state.players.forEach(player => {
-            if (!player.isFolded) {
-                const allCards = [...player.cards, ...this.state.communityCards];
-                player.handResult = evaluateHand(allCards);
-            }
-        });
-    }
-
-    private startBettingRound() {
-        this.state.players.forEach(p => { 
-            if (!p.isAllIn) p.bet = 0;
-            p.isThinking = false;
-            p.lastActionDisplay = undefined;
+    
+    private endBettingRound() {
+        this.state.players.forEach(p => {
+            p.bet = 0;
+            p.hasActed = false;
+            p.isActive = false;
         });
         this.state.currentBet = 0;
-        
-        let firstToAct = (this.state.players.findIndex(p => p.isDealer) + 1) % this.state.players.length;
-        while(this.state.players[firstToAct].isFolded || this.state.players[firstToAct].isAllIn) {
-             firstToAct = (firstToAct + 1) % this.state.players.length;
-        }
-        
-        this.state.activePlayerIndex = firstToAct;
-        this.state.players[firstToAct].isThinking = true;
-        this.state.lastRaiserIndex = firstToAct;
-        this.broadcastState();
-    }
 
-    private async progressToNextPhase() {
-        // Collect bets into pot
-        this.state.players.forEach(p => { this.state.pot += p.bet; p.bet = 0; });
-
-        // Check if only one player is left
         const activePlayers = this.state.players.filter(p => !p.isFolded);
-        if (activePlayers.length === 1) {
-            return this.showdown();
+        if (activePlayers.length <= 1) {
+            this.showdown();
+            return;
         }
 
-        switch (this.state.gamePhase) {
-            case GamePhase.PRE_FLOP:
-                this.state.gamePhase = GamePhase.FLOP;
-                this.state.communityCards = [this.deck.pop()!, this.deck.pop()!, this.deck.pop()!];
-                this.updateAllPlayerHands();
-                this.startBettingRound();
+        switch (this.state.stage) {
+            case GameStage.PRE_FLOP:
+                this.state.stage = GameStage.FLOP;
+                this.state.communityCards.push(this.deck.pop()!, this.deck.pop()!, this.deck.pop()!);
                 break;
-            case GamePhase.FLOP:
-                this.state.gamePhase = GamePhase.TURN;
+            case GameStage.FLOP:
+                this.state.stage = GameStage.TURN;
                 this.state.communityCards.push(this.deck.pop()!);
-                this.updateAllPlayerHands();
-                this.startBettingRound();
                 break;
-            case GamePhase.TURN:
-                this.state.gamePhase = GamePhase.RIVER;
+            case GameStage.TURN:
+                this.state.stage = GameStage.RIVER;
                 this.state.communityCards.push(this.deck.pop()!);
-                this.updateAllPlayerHands();
-                this.startBettingRound();
                 break;
-            case GamePhase.RIVER:
-                this.state.gamePhase = GamePhase.SHOWDOWN;
-                await this.showdown();
-                break;
-            default:
-                break;
+            case GameStage.RIVER:
+                this.showdown();
+                return;
         }
+        
+        // Start next betting round
+        let firstToAct = (this.state.dealerIndex + 1) % this.state.players.length;
+        while(this.state.players[firstToAct].isFolded || this.state.players[firstToAct].isAllIn) {
+            firstToAct = (firstToAct + 1) % this.state.players.length;
+        }
+        this.state.activePlayerIndex = firstToAct;
+        this.state.players[firstToAct].isActive = true;
+        this.broadcast();
     }
     
-    private async showdown() {
-        this.state.activePlayerIndex = -1;
-        this.state.gamePhase = GamePhase.SHOWDOWN;
-        this.updateAllPlayerHands();
-    
-        const contenders = this.state.players.filter(p => !p.isFolded);
-    
-        if (contenders.length === 1) {
-            const winner = contenders[0];
+    private showdown() {
+        this.state.stage = GameStage.SHOWDOWN;
+        const activePlayers = this.state.players.filter(p => !p.isFolded);
+        
+        if (activePlayers.length === 1) {
+            const winner = activePlayers[0];
             winner.stack += this.state.pot;
-            this.state.log = [`${winner.name} wins ${this.state.pot}!`];
-            this.state.pot = 0;
-            await this.updatePlayerBalanceInDB(winner);
-        } else if (contenders.length > 1) {
-            // Hands are already evaluated in updateAllPlayerHands
-            let bestHand: HandResult = contenders[0].handResult!;
-            let winners: Player[] = [contenders[0]];
+            this.state.winners = [{
+                playerId: winner.id, name: winner.name, amountWon: this.state.pot,
+                handRank: "Walkover", winningHand: winner.hand
+            }];
+        } else {
+            const evaluatedHands = activePlayers.map(player => {
+                const allCards = [...player.hand, ...this.state.communityCards];
+                const bestHand = this.evaluateHand(allCards);
+                return { player, bestHand };
+            }).sort((a, b) => b.bestHand.rank - a.bestHand.rank || b.bestHand.value - a.bestHand.value);
+            
+            const bestRank = evaluatedHands[0].bestHand.rank;
+            const bestValue = evaluatedHands[0].bestHand.value;
+            
+            const winners = evaluatedHands.filter(h => h.bestHand.rank === bestRank && h.bestHand.value === bestValue);
+            const amountWon = this.state.pot / winners.length;
+
+            this.state.winners = winners.map(({ player, bestHand }) => {
+                player.stack += amountWon;
+                return {
+                    playerId: player.id, name: player.name, amountWon: amountWon,
+                    handRank: bestHand.name, winningHand: bestHand.cards
+                };
+            });
+        }
+        
+        this.state.pot = 0;
+        this.handInProgress = false;
+        this.broadcast();
+
+        if (this.newHandTimeout) clearTimeout(this.newHandTimeout);
+        this.newHandTimeout = setTimeout(() => this.startNewHand(), 7000);
+    }
     
-            for (let i = 1; i < contenders.length; i++) {
-                const player = contenders[i];
-                const comparison = compareHandResults(player.handResult!, bestHand);
-                if (comparison > 0) {
-                    bestHand = player.handResult!;
-                    winners = [player];
-                } else if (comparison === 0) {
-                    winners.push(player);
+    private evaluateHand(cards: Card[]): HandResult {
+        const all5CardCombos: Card[][] = [];
+        for (let i = 0; i < cards.length; i++) {
+            for (let j = i + 1; j < cards.length; j++) {
+                for (let k = j + 1; k < cards.length; k++) {
+                    for (let l = k + 1; l < cards.length; l++) {
+                        for (let m = l + 1; m < cards.length; m++) {
+                            all5CardCombos.push([cards[i], cards[j], cards[k], cards[l], cards[m]]);
+                        }
+                    }
                 }
             }
-    
-            // Distribute the pot among the winners
-            const totalWinnings = this.state.pot;
-            const potPerWinner = Math.floor(totalWinnings / winners.length);
-    
-            for (const winner of winners) {
-                winner.stack += potPerWinner;
-                await this.updatePlayerBalanceInDB(winner);
-            }
-    
-            const winnerNames = winners.map(w => w.name).join(', ');
-            this.state.log = [`${winnerNames} wins ${totalWinnings} with a ${bestHand.name}!`];
-            this.state.pot = 0;
-        } else {
-            // This case (0 contenders) should ideally not be reached if a hand is in progress.
-            this.state.log = [`The pot of ${this.state.pot} is split.`];
-            this.state.pot = 0;
         }
-    
-        this.broadcastState();
-    
-        setTimeout(() => this.startNewHand(), 5000);
-    }
-    
-    private async updatePlayerBalanceInDB(player: Player) {
-        try {
-            await pool.query(
-                'UPDATE "Users" SET "playMoney" = $1 WHERE id = $2',
-                [player.stack, player.id]
-            );
-        } catch (error) {
-            console.error(`Failed to update balance for winner ${player.id}:`, error);
-        }
-    }
-}
 
+        let bestHand: HandResult = { rank: 0, name: 'High Card', value: 0, cards: [] };
+
+        all5CardCombos.forEach(hand => {
+            const result = this.getHandRank(hand);
+            if (result.rank > bestHand.rank || (result.rank === bestHand.rank && result.value > bestHand.value)) {
+                bestHand = result;
+            }
+        });
+
+        return bestHand;
+    }
+    
+    private getHandRank(hand: Card[]): HandResult {
+        const sortedHand = [...hand].sort((a, b) => rankToValue[b.rank] - rankToValue[a.rank]);
+        const ranks = sortedHand.map(c => rankToValue[c.rank]);
+        const suits = sortedHand.map(c => c.suit);
+
+        const isFlush = suits.every(s => s === suits[0]);
+        const rankCounts: Record<number, number> = ranks.reduce((acc, rank) => {
+            acc[rank] = (acc[rank] || 0) + 1;
+            return acc;
+        }, {} as Record<number, number>);
+        
+        const counts = Object.values(rankCounts).sort((a, b) => b - a);
+        const rankGroups = Object.keys(rankCounts).map(Number).sort((a, b) => b - a);
+
+        const isStraight = ranks.every((rank, i) => i === 0 || ranks[i-1] - 1 === rank) ||
+                         ([14, 5, 4, 3, 2].every(r => ranks.includes(r))); // Ace-low straight
+        
+        const value = parseInt(ranks.map(r => r.toString(16).padStart(2, '0')).join(''), 16);
+
+        if (isStraight && isFlush) return { rank: 9, name: 'Straight Flush', value, cards: sortedHand };
+        if (counts[0] === 4) return { rank: 8, name: 'Four of a Kind', value, cards: sortedHand };
+        if (counts[0] === 3 && counts[1] === 2) return { rank: 7, name: 'Full House', value, cards: sortedHand };
+        if (isFlush) return { rank: 6, name: 'Flush', value, cards: sortedHand };
+        if (isStraight) return { rank: 5, name: 'Straight', value, cards: sortedHand };
+        if (counts[0] === 3) return { rank: 4, name: 'Three of a Kind', value, cards: sortedHand };
+        if (counts[0] === 2 && counts[1] === 2) return { rank: 3, name: 'Two Pair', value, cards: sortedHand };
+        if (counts[0] === 2) return { rank: 2, name: 'One Pair', value, cards: sortedHand };
+        
+        return { rank: 1, name: 'High Card', value, cards: sortedHand };
+    }
+
+    getState(): GameState { return this.state; }
+    private broadcast() { this.onStateChange(); }
+}
 
 export let gameInstance: PokerGame | null = null;
 
-export function createPokerGame(
-    numPlayers: number,
-    smallBlind: number,
-    bigBlind: number,
-    initialStack: number,
-    broadcastCallback: () => void
-) {
-    gameInstance = new PokerGame(numPlayers, smallBlind, bigBlind, initialStack, broadcastCallback);
-    return gameInstance;
-}
+export const createPokerGame = (onStateChange: () => void) => {
+    if (!gameInstance) {
+        gameInstance = new PokerGame(onStateChange);
+    }
+};

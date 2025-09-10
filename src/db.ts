@@ -1,3 +1,4 @@
+
 import { Pool } from 'pg';
 import { Suit, Rank } from './types';
 
@@ -51,8 +52,10 @@ const generateDefaultCardFaces = () => {
     [Rank.SIX]: '6', [Rank.FIVE]: '5', [Rank.FOUR]: '4', [Rank.THREE]: '3', [Rank.TWO]: '2',
   };
 
-  for (const suit of Object.values(Suit)) {
-    for (const rank of Object.values(Rank)) {
+  // FIX: Cast Object.values to specific enum arrays to ensure type safety for indexing.
+  for (const suit of Object.values(Suit) as Suit[]) {
+    // FIX: Cast Object.values to specific enum arrays to ensure type safety for indexing.
+    for (const rank of Object.values(Rank) as Rank[]) {
       faces.push({
         suit,
         rank,

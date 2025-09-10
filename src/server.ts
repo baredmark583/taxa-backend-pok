@@ -28,11 +28,10 @@ const port = process.env.PORT || 3000;
 app.use(cors());
 
 
-// FIX: Fix "No overload matches this call" error by removing explicit cast.
-// The cast was causing a type mismatch with the `app.use` signature.
-// Removing it allows TypeScript to infer the correct type for the middleware.
-app.use('/api', express.json());
-app.use('/api', apiRouter);
+// FIX: To resolve a "No overload matches this call" error, the express.json() middleware
+// is applied directly to the /api route along with the API router. This can help
+// TypeScript correctly infer the types for the app.use method overload.
+app.use('/api', express.json(), apiRouter);
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
