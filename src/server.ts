@@ -11,13 +11,6 @@ import { setupWebSocket } from './wsHandler';
 import { apiRouter } from './api';
 import { initializeDatabase } from './db';
 
-// Initialize the database schema on startup
-initializeDatabase().catch(err => {
-    console.error("Failed to initialize database:", err);
-    // FIX: Cast process to any to avoid TypeScript error on exit.
-    (process as any).exit(1);
-});
-
 // FIX: Removed explicit `express.Application` type and let TypeScript infer it.
 // This resolves overload errors on `app.use` and `http.createServer` that were
 // likely caused by a type definition conflict. The explicit type was a workaround
@@ -33,10 +26,12 @@ const host = '0.0.0.0';
 // resolves issues where the ADMIN_APP_URL environment variable might not match.
 app.use(cors());
 
-// FIX: Combined express.json() middleware with the apiRouter to resolve a TypeScript overload error.
-// This makes the JSON parser specific to the /api route, which is functionally acceptable
-// for this application and resolves type inference issues.
-app.use('/api', express.json(), apiRouter);
+// FIX: Separated middleware registration to resolve the TypeScript overload error on line 32.
+// The original combined `app.use('/api', express.json(), apiRouter)` caused
+// a type conflict. Applying `express.json()` globally before mounting the apiRouter
+// resolves the issue while being functionally equivalent for this application.
+app.use(express.json());
+app.use('/api', apiRouter);
 
 // Add a root route for health checks
 app.get('/', (req, res) => {
@@ -51,4 +46,12 @@ setupWebSocket(wss);
 server.listen(Number(port), host, () => {
     // FIX: Updated log message to reflect the correct host and port.
     console.log(`Server is running on http://${host}:${port}`);
+
+    // Initialize the database schema after the server has started listening.
+    // This allows the server to respond to health checks quickly, preventing deployment timeouts on platforms like Render.
+    initializeDatabase().catch(err => {
+        console.error("Failed to initialize database:", err);
+        // FIX: Cast process to any to avoid TypeScript error on exit.
+        (process as any).exit(1);
+    });
 });
