@@ -26,7 +26,7 @@ export const defaultIcons = {
     iconDealerChip: 'https://api.iconify.design/mdi/letter-d-box.svg',
     iconPokerChip: 'https://api.iconify.design/icon-park/poker.svg',
     iconSlotMachine: 'https://api.iconify.design/mdi/slot-machine.svg',
-    iconRoulette: 'https://api.iconify.design/mdi/roulette.svg',
+    iconRoulette: 'https://api.iconify.design/game-icons/roulette-wheel.svg',
     iconFold: 'https://api.iconify.design/mdi/hand-back-right-off-outline.svg',
     iconCall: 'https://api.iconify.design/mdi/check.svg',
     iconRaise: 'https://api.iconify.design/mdi/arrow-up-bold.svg',
