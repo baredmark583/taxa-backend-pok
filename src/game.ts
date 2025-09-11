@@ -83,19 +83,55 @@ class PokerGame {
     removePlayer(userId: string) {
         const playerIndex = this.state.players.findIndex(p => p.id === userId);
         if (playerIndex === -1) return;
-        
+
+        // If the active player is leaving, they automatically fold.
+        // This call will correctly advance the `activePlayerIndex` to the next player before the array is modified.
         if (this.state.players[playerIndex].isActive) {
            this.handlePlayerAction(userId, { type: 'fold' });
         }
         
+        // Cache the current indices BEFORE splicing the array.
+        const preSpliceActiveIndex = this.state.activePlayerIndex;
+        const preSpliceDealerIndex = this.state.dealerIndex;
+    
+        // Remove the player from the game state.
         this.state.players.splice(playerIndex, 1);
-
-        if (this.state.players.length < 2 && this.handInProgress) {
-            this.endHandEarly();
-        } else if (this.state.dealerIndex >= this.state.players.length) {
+    
+        // --- Index Correction ---
+        // After splicing, indices may be shifted. We must correct them to prevent out-of-bounds errors.
+        
+        // Correct Active Player Index:
+        // If a player was removed from *before* the current active player, its index must be decremented.
+        if (preSpliceActiveIndex > playerIndex) {
+            this.state.activePlayerIndex = preSpliceActiveIndex - 1;
+        } else {
+            this.state.activePlayerIndex = preSpliceActiveIndex;
+        }
+    
+        // Correct Dealer Index:
+        if (preSpliceDealerIndex > playerIndex) {
+            this.state.dealerIndex = preSpliceDealerIndex - 1;
+        } else if (preSpliceDealerIndex === playerIndex) {
+            // Dealer left. Pass the button to the "left" (previous index) to ensure the next hand's dealer is correct.
+            // We add the new length to handle the modulo of a potential negative number.
+            this.state.dealerIndex = (playerIndex - 1 + this.state.players.length) % this.state.players.length;
+        } else {
+            this.state.dealerIndex = preSpliceDealerIndex;
+        }
+        
+        // Final safety checks to prevent invalid index states.
+        if (this.state.activePlayerIndex >= this.state.players.length) {
+            this.state.activePlayerIndex = 0; 
+        }
+         if (this.state.dealerIndex >= this.state.players.length) {
             this.state.dealerIndex = 0;
         }
-
+    
+        // Check if the hand should end now that a player has left.
+        if (this.state.players.length < 2 && this.handInProgress) {
+            this.endHandEarly();
+        }
+    
         this.broadcast();
     }
 
