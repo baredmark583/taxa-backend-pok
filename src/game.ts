@@ -181,7 +181,14 @@ class PokerGame {
                 if (player.stack === 0) player.isAllIn = true;
                 break;
             case 'raise':
-                const raiseAmount = action.amount!;
+                if (typeof action.amount !== 'number' || action.amount < 0) {
+                    console.error(`Invalid raise action from ${playerId}: amount is missing or invalid.`);
+                    player.isActive = true;
+                    player.hasActed = false;
+                    this.broadcast();
+                    return;
+                }
+                const raiseAmount = action.amount;
                 const totalBet = raiseAmount;
                 const amountToPot = totalBet - player.bet;
                 
