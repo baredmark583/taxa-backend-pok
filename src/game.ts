@@ -1,4 +1,3 @@
-
 import { pool } from './db';
 import { Rank, Suit, Card, Player, GameStage, GameState, WinnerInfo } from './types';
 
@@ -65,7 +64,8 @@ class PokerGame {
         const player: Player = {
             id: user.id.toString(), name: user.first_name, stack, bet: 0,
             hand: [], isFolded: false, isAllIn: false, isActive: false, hasActed: false,
-            photoUrl: user.photo_url
+            photoUrl: user.photo_url,
+            isSittingOut: this.handInProgress, // Player must wait for the next hand
         };
         this.state.players.push(player);
 
@@ -161,6 +161,7 @@ class PokerGame {
             p.isAllIn = false;
             p.isActive = false;
             p.hasActed = false;
+            p.isSittingOut = false; // All players are in for the new hand
         });
 
         // FIX: Correctly access dealerIndex from the state object.
@@ -241,20 +242,20 @@ class PokerGame {
     }
     
     private moveToNextPlayer() {
-        const activePlayersCount = this.state.players.filter(p => !p.isFolded).length;
+        const activePlayersCount = this.state.players.filter(p => !p.isFolded && !p.isSittingOut).length;
         if (activePlayersCount <= 1) {
             this.endBettingRound();
             return;
         }
         
-        const roundOver = this.state.players.every(p => p.isFolded || p.isAllIn || (p.hasActed && p.bet === this.state.currentBet));
+        const roundOver = this.state.players.every(p => p.isFolded || p.isAllIn || (p.hasActed && p.bet === this.state.currentBet) || p.isSittingOut);
         if (roundOver) {
             this.endBettingRound();
             return;
         }
         
         let nextIndex = (this.state.activePlayerIndex + 1) % this.state.players.length;
-        while (this.state.players[nextIndex].isFolded || this.state.players[nextIndex].isAllIn) {
+        while (this.state.players[nextIndex].isFolded || this.state.players[nextIndex].isAllIn || this.state.players[nextIndex].isSittingOut) {
             nextIndex = (nextIndex + 1) % this.state.players.length;
         }
         this.state.activePlayerIndex = nextIndex;
@@ -271,7 +272,7 @@ class PokerGame {
         });
         this.state.currentBet = 0;
 
-        const activePlayers = this.state.players.filter(p => !p.isFolded);
+        const activePlayers = this.state.players.filter(p => !p.isFolded && !p.isSittingOut);
         if (activePlayers.length <= 1) {
             this.showdown();
             return;
@@ -297,7 +298,7 @@ class PokerGame {
         
         // Start next betting round
         let firstToAct = (this.state.dealerIndex + 1) % this.state.players.length;
-        while(this.state.players[firstToAct].isFolded || this.state.players[firstToAct].isAllIn) {
+        while(this.state.players[firstToAct].isFolded || this.state.players[firstToAct].isAllIn || this.state.players[firstToAct].isSittingOut) {
             firstToAct = (firstToAct + 1) % this.state.players.length;
         }
         this.state.activePlayerIndex = firstToAct;
@@ -316,7 +317,7 @@ class PokerGame {
                 playerId: winner.id, name: winner.name, amountWon: this.state.pot,
                 handRank: "Walkover", winningHand: winner.hand
             }];
-        } else {
+        } else if (activePlayers.length > 1) {
             const evaluatedHands = activePlayers.map(player => {
                 const allCards = [...player.hand, ...this.state.communityCards];
                 const bestHand = this.evaluateHand(allCards);
@@ -336,6 +337,9 @@ class PokerGame {
                     handRank: bestHand.name, winningHand: bestHand.cards
                 };
             });
+        } else {
+            // Edge case: showdown called with 0 active players. End the hand.
+            console.warn("Showdown called with 0 active players. Ending hand without awarding pot.");
         }
         
         this.state.pot = 0;

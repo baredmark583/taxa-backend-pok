@@ -39,6 +39,7 @@ export interface Player {
     isActive: boolean; // Is it their turn?
     hasActed: boolean; // Has acted in the current betting round
     photoUrl?: string;
+    isSittingOut?: boolean;
 }
 
 export enum GameStage {
