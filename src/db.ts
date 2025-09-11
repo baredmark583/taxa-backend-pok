@@ -1,6 +1,7 @@
 
+
 import { Pool } from 'pg';
-import { Suit, Rank } from './types';
+import { Suit, Rank, LotteryPrize } from './types';
 
 export const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -13,6 +14,8 @@ const defaultAssets = {
     cardBackUrl: 'https://www.svgrepo.com/show/472548/card-back.svg',
     tableBackgroundUrl: 'https://wallpapercave.com/wp/wp1852445.jpg',
     godModePassword: 'reveal_cards_42',
+    lotteryTicketPricePlayMoney: 100,
+    lotteryTicketPriceRealMoney: 0.5,
 };
 
 export const defaultIcons = {
@@ -43,6 +46,15 @@ const defaultSlotSymbols = [
     { name: 'ORANGE', imageUrl: 'https://www.svgrepo.com/show/483427/orange.svg', payout: 5, weight: 50 },
     { name: 'LEMON', imageUrl: 'https://www.svgrepo.com/show/483431/lemon.svg', payout: 3, weight: 60 },
     { name: 'GRAPE', imageUrl: 'https://www.svgrepo.com/show/483419/grapes.svg', payout: 2, weight: 70 },
+];
+
+export const defaultLotteryPrizes: Omit<LotteryPrize, 'id'>[] = [
+    { label: 'Джекпот!', multiplier: 20000, weight: 1 }, // 200x
+    { label: 'Крупный выигрыш', multiplier: 500, weight: 5 },   // 5x
+    { label: 'Приз', multiplier: 300, weight: 10 },  // 3x
+    { label: 'Малый приз', multiplier: 200, weight: 20 },  // 2x
+    { label: 'Возврат билета', multiplier: 100, weight: 150 }, // 1x
+    { label: 'Не повезло', multiplier: 0, weight: 814 },
 ];
 
 const generateDefaultCardFaces = () => {
@@ -108,7 +120,9 @@ export const initializeDatabase = async () => {
             ...Object.keys(defaultIcons).reduce((acc, key) => ({ ...acc, [key]: 'TEXT' }), {})
         };
         for (const [colName, colType] of Object.entries(assetColumns)) {
-            await client.query(`ALTER TABLE "AssetConfig" ADD COLUMN IF NOT EXISTS "${colName}" ${colType};`);
+            // Use DOUBLE PRECISION for money fields
+            const finalType = colName.includes('Money') ? 'DOUBLE PRECISION' : colType;
+            await client.query(`ALTER TABLE "AssetConfig" ADD COLUMN IF NOT EXISTS "${colName}" ${finalType};`);
         }
         
         // Remove any old columns from previous versions.
@@ -119,12 +133,7 @@ export const initializeDatabase = async () => {
         const defaultKeys = Object.keys(allDefaults);
         const defaultValues = Object.values(allDefaults);
         
-        // Placeholders for the INSERT part, starting from $2 since $1 is for the id.
         const insertPlaceholders = defaultKeys.map((_, i) => `$${i + 2}`).join(', ');
-
-        // The SET clause for the UPDATE part. Using COALESCE with EXCLUDED ensures that
-        // we only set the default value if the existing column is NULL, without re-referencing
-        // the parameter list, which caused the original error.
         const updateSet = defaultKeys.map(key => `"${key}" = COALESCE("AssetConfig"."${key}", EXCLUDED."${key}")`).join(', ');
 
         await client.query(`
@@ -144,7 +153,6 @@ export const initializeDatabase = async () => {
             );
         `);
         
-        // Seed CardAssets if empty
         const cardCount = await client.query('SELECT COUNT(*) FROM "CardAssets"');
         if (parseInt(cardCount.rows[0].count, 10) === 0) {
             const defaultCards = generateDefaultCardFaces();
@@ -167,7 +175,6 @@ export const initializeDatabase = async () => {
             );
         `);
         
-        // Seed SlotSymbols if empty
         const symbolCount = await client.query('SELECT COUNT(*) FROM "SlotSymbols"');
         if (parseInt(symbolCount.rows[0].count, 10) === 0) {
             for (const symbol of defaultSlotSymbols) {
@@ -177,6 +184,33 @@ export const initializeDatabase = async () => {
                 );
             }
         }
+        
+        // 5. LotteryPrizes Table
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS "LotteryPrizes" (
+                "id" SERIAL PRIMARY KEY,
+                "label" TEXT NOT NULL,
+                "multiplier" INTEGER NOT NULL,
+                "weight" INTEGER NOT NULL,
+                "isRealMoney" BOOLEAN NOT NULL
+            );
+        `);
+
+        const prizeCount = await client.query('SELECT COUNT(*) FROM "LotteryPrizes"');
+        if (parseInt(prizeCount.rows[0].count, 10) === 0) {
+            for(const prize of defaultLotteryPrizes) {
+                // Insert for both play money (easy) and real money (hard)
+                await client.query(
+                    'INSERT INTO "LotteryPrizes" (label, multiplier, weight, "isRealMoney") VALUES ($1, $2, $3, false)',
+                    [prize.label, prize.multiplier, prize.weight]
+                );
+                 await client.query(
+                    'INSERT INTO "LotteryPrizes" (label, multiplier, weight, "isRealMoney") VALUES ($1, $2, $3, true)',
+                    [prize.label, prize.multiplier, prize.weight]
+                );
+            }
+        }
+
         
         await client.query('COMMIT');
         console.log('Database schema is ready.');

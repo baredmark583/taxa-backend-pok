@@ -1,7 +1,7 @@
 import express from 'express';
 import { pool } from './db';
 import { Rank, Suit } from './types';
-import { defaultIcons } from './db';
+import { defaultIcons, defaultLotteryPrizes } from './db';
 
 // FIX: To resolve overload errors similar to those in server.ts, the explicit
 // Router type has been removed to allow TypeScript to infer it. This addresses
@@ -99,12 +99,14 @@ apiRouter.post('/users/:id/role', async (req, res) => {
 // FIX: Removed /api prefix. It is now handled in server.ts
 apiRouter.get('/assets', async (req, res) => {
     try {
-        const configRes = await pool.query('SELECT * FROM "AssetConfig" WHERE id = 1');
+        const client = await pool.connect();
+        const configRes = await client.query('SELECT * FROM "AssetConfig" WHERE id = 1');
         if (configRes.rows.length === 0) {
+             client.release();
              return res.status(404).json({ error: 'Asset configuration not found.' });
         }
         
-        const cardsRes = await pool.query('SELECT suit, rank, "imageUrl" FROM "CardAssets"');
+        const cardsRes = await client.query('SELECT suit, rank, "imageUrl" FROM "CardAssets"');
         const cardFaces = cardsRes.rows.reduce((acc, row) => {
             const { suit, rank, imageUrl } = row;
             if (!acc[suit]) acc[suit] = {};
@@ -112,12 +114,18 @@ apiRouter.get('/assets', async (req, res) => {
             return acc;
         }, {});
 
-        const symbolsRes = await pool.query('SELECT id, name, "imageUrl", payout, weight FROM "SlotSymbols" ORDER BY id');
+        const symbolsRes = await client.query('SELECT id, name, "imageUrl", payout, weight FROM "SlotSymbols" ORDER BY id');
+        
+        const prizesPlayRes = await client.query('SELECT id, label, multiplier, weight FROM "LotteryPrizes" WHERE "isRealMoney" = false ORDER BY id');
+        const prizesRealRes = await client.query('SELECT id, label, multiplier, weight FROM "LotteryPrizes" WHERE "isRealMoney" = true ORDER BY id');
 
+        client.release();
         res.json({
             ...configRes.rows[0],
             cardFaces,
             slotSymbols: symbolsRes.rows,
+            lotteryPrizesPlayMoney: prizesPlayRes.rows,
+            lotteryPrizesRealMoney: prizesRealRes.rows
         });
 
     } catch (error) {
@@ -131,6 +139,8 @@ apiRouter.get('/assets', async (req, res) => {
 apiRouter.post('/assets', async (req, res) => {
     const { 
         cardBackUrl, tableBackgroundUrl, godModePassword, cardFaces, slotSymbols,
+        lotteryTicketPricePlayMoney, lotteryTicketPriceRealMoney, 
+        lotteryPrizesPlayMoney, lotteryPrizesRealMoney,
         ...icons 
     } = req.body;
     
@@ -138,7 +148,7 @@ apiRouter.post('/assets', async (req, res) => {
     
     // Prepare icon fields for the query
     const iconFields = Object.keys(defaultIcons);
-    const iconUpdateSet = iconFields.map((field, i) => `"${field}" = $${i + 4}`).join(', ');
+    const iconUpdateSet = iconFields.map((field, i) => `"${field}" = $${i + 6}`).join(', ');
     const iconValues = iconFields.map(field => icons[field]);
 
     try {
@@ -146,8 +156,14 @@ apiRouter.post('/assets', async (req, res) => {
 
         // 1. Update general config including icons
         await client.query(
-            `UPDATE "AssetConfig" SET "cardBackUrl" = $1, "tableBackgroundUrl" = $2, "godModePassword" = $3, ${iconUpdateSet} WHERE id = 1`,
-            [cardBackUrl, tableBackgroundUrl, godModePassword, ...iconValues]
+            `UPDATE "AssetConfig" SET 
+                "cardBackUrl" = $1, "tableBackgroundUrl" = $2, "godModePassword" = $3, 
+                "lotteryTicketPricePlayMoney" = $4, "lotteryTicketPriceRealMoney" = $5,
+                ${iconUpdateSet} 
+            WHERE id = 1`,
+            [cardBackUrl, tableBackgroundUrl, godModePassword, 
+             lotteryTicketPricePlayMoney, lotteryTicketPriceRealMoney, 
+             ...iconValues]
         );
 
         // 2. Update card faces (clear and re-insert)
@@ -174,6 +190,21 @@ apiRouter.post('/assets', async (req, res) => {
                 [symbol.name, symbol.imageUrl, symbol.payout, symbol.weight]
             );
         }
+        
+        // 4. Update lottery prizes (clear and re-insert)
+        await client.query('TRUNCATE TABLE "LotteryPrizes" RESTART IDENTITY');
+        for(const prize of lotteryPrizesPlayMoney) {
+            await client.query(
+                'INSERT INTO "LotteryPrizes" (label, multiplier, weight, "isRealMoney") VALUES ($1, $2, $3, false)',
+                [prize.label, prize.multiplier, prize.weight]
+            );
+        }
+        for(const prize of lotteryPrizesRealMoney) {
+            await client.query(
+                'INSERT INTO "LotteryPrizes" (label, multiplier, weight, "isRealMoney") VALUES ($1, $2, $3, true)',
+                [prize.label, prize.multiplier, prize.weight]
+            );
+        }
 
         await client.query('COMMIT');
         
@@ -181,6 +212,8 @@ apiRouter.post('/assets', async (req, res) => {
         const newAssetsRes = await client.query('SELECT * FROM "AssetConfig" WHERE id=1');
         const newCardsRes = await client.query('SELECT * FROM "CardAssets"');
         const newSymbolsRes = await client.query('SELECT * FROM "SlotSymbols" ORDER BY id');
+        const newPrizesPlayRes = await client.query('SELECT id, label, multiplier, weight FROM "LotteryPrizes" WHERE "isRealMoney" = false ORDER BY id');
+        const newPrizesRealRes = await client.query('SELECT id, label, multiplier, weight FROM "LotteryPrizes" WHERE "isRealMoney" = true ORDER BY id');
 
         const newCardFaces = newCardsRes.rows.reduce((acc, row) => {
             if (!acc[row.suit]) acc[row.suit] = {};
@@ -192,6 +225,8 @@ apiRouter.post('/assets', async (req, res) => {
             ...newAssetsRes.rows[0],
             cardFaces: newCardFaces,
             slotSymbols: newSymbolsRes.rows,
+            lotteryPrizesPlayMoney: newPrizesPlayRes.rows,
+            lotteryPrizesRealMoney: newPrizesRealRes.rows
         });
 
     } catch (error) {
@@ -225,15 +260,19 @@ apiRouter.post('/assets/reset', async (req, res) => {
     
     // Prepare icon fields for the query
     const iconFields = Object.keys(defaultIcons);
-    const iconUpdateSet = iconFields.map((field, i) => `"${field}" = $${i + 4}`).join(', ');
+    const iconUpdateSet = iconFields.map((field, i) => `"${field}" = $${i + 6}`).join(', ');
     const iconValues = Object.values(defaultIcons);
 
     try {
         await client.query('BEGIN');
 
         await client.query(
-            `UPDATE "AssetConfig" SET "cardBackUrl" = $1, "tableBackgroundUrl" = $2, "godModePassword" = $3, ${iconUpdateSet} WHERE id = 1`,
-            ['https://www.svgrepo.com/show/472548/card-back.svg', 'https://wallpapercave.com/wp/wp1852445.jpg', 'reveal_cards_42', ...iconValues]
+            `UPDATE "AssetConfig" SET 
+                "cardBackUrl" = $1, "tableBackgroundUrl" = $2, "godModePassword" = $3, 
+                "lotteryTicketPricePlayMoney" = $4, "lotteryTicketPriceRealMoney" = $5,
+                ${iconUpdateSet} 
+            WHERE id = 1`,
+            ['https://www.svgrepo.com/show/472548/card-back.svg', 'https://wallpapercave.com/wp/wp1852445.jpg', 'reveal_cards_42', 100, 0.5, ...iconValues]
         );
         
         await client.query('TRUNCATE TABLE "CardAssets"');
@@ -257,6 +296,18 @@ apiRouter.post('/assets/reset', async (req, res) => {
             );
         }
 
+        await client.query('TRUNCATE TABLE "LotteryPrizes" RESTART IDENTITY');
+        for(const prize of defaultLotteryPrizes) {
+            await client.query(
+                'INSERT INTO "LotteryPrizes" (label, multiplier, weight, "isRealMoney") VALUES ($1, $2, $3, false)',
+                [prize.label, prize.multiplier, prize.weight]
+            );
+             await client.query(
+                'INSERT INTO "LotteryPrizes" (label, multiplier, weight, "isRealMoney") VALUES ($1, $2, $3, true)',
+                [prize.label, prize.multiplier, prize.weight]
+            );
+        }
+
         await client.query('COMMIT');
         
         const configRes = await pool.query('SELECT * FROM "AssetConfig" WHERE id = 1');
@@ -267,11 +318,16 @@ apiRouter.post('/assets/reset', async (req, res) => {
             return acc;
         }, {});
         const symbolsRes = await pool.query('SELECT id, name, "imageUrl", payout, weight FROM "SlotSymbols" ORDER BY id');
+        const prizesPlayRes = await client.query('SELECT id, label, multiplier, weight FROM "LotteryPrizes" WHERE "isRealMoney" = false ORDER BY id');
+        const prizesRealRes = await client.query('SELECT id, label, multiplier, weight FROM "LotteryPrizes" WHERE "isRealMoney" = true ORDER BY id');
+
 
         res.json({
             ...configRes.rows[0],
             cardFaces,
             slotSymbols: symbolsRes.rows,
+            lotteryPrizesPlayMoney: prizesPlayRes.rows,
+            lotteryPrizesRealMoney: prizesRealRes.rows
         });
 
     } catch (error) {

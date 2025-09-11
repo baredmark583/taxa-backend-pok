@@ -70,3 +70,10 @@ export interface GameState {
     dealerIndex: number;
     winners?: WinnerInfo[];
 }
+
+export interface LotteryPrize {
+    id?: number;
+    label: string;
+    multiplier: number;
+    weight: number;
+}
