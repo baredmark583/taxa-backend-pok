@@ -1,13 +1,14 @@
-import express from 'express';
+
+
+import express, { Router } from 'express';
 import { pool } from './db';
 import { Rank, Suit } from './types';
 import { defaultIcons, defaultLotteryPrizes } from './db';
 
-// FIX: To resolve overload errors similar to those in server.ts, the explicit
-// Router type has been removed to allow TypeScript to infer it. This addresses
-// a type definition conflict causing issues with middleware.
-// FIX: Changed to express.Router() to ensure correct type inference and resolve middleware type conflicts.
-export const apiRouter = express.Router();
+// FIX: Re-added the explicit `Router` type. This helps TypeScript's compiler
+// correctly resolve the overloads for `app.use()` in `server.ts`, which was
+// failing due to incorrect type inference.
+export const apiRouter: Router = express.Router();
 
 // Get all users
 // FIX: Removed /api prefix. It is now handled in server.ts
