@@ -44,9 +44,12 @@ export const setupWebSocket = (wss: WebSocketServer) => {
     wss.on('connection', (ws: WebSocket) => {
         console.log('Client connected');
         
-        ws.on('message', async (message: string) => {
+        // FIX: The incoming message can be a Buffer, not just a string.
+        // Explicitly convert it to a UTF-8 string before parsing.
+        ws.on('message', async (message: Buffer) => {
             try {
-                const data = JSON.parse(message);
+                const messageString = message.toString('utf-8');
+                const data = JSON.parse(messageString);
                 const { type, payload } = data;
 
                 // For simplicity, we use one global game room 'table-1'
